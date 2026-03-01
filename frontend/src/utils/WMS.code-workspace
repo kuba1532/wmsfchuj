@@ -1,0 +1,13 @@
+{
+  "folders": [
+    {
+      "name": "frontend",
+      "path": "../..",
+    },
+    {
+      "name": "WMS",
+      "path": "../../WMS",
+    },
+  ],
+  "settings": {},
+}

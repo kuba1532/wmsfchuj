@@ -1,0 +1,167 @@
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+
+from app.core.security import decode_token
+from app.db.database import get_db
+from app.models.models import User, RoleEnum
+
+
+security_scheme = HTTPBearer()
+
+
+# ─────────────────────────────
+# CURRENT USER
+# ─────────────────────────────
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+
+    token = credentials.credentials
+    payload = decode_token(token)
+
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token nieprawidlowy lub wygasl.",
+        )
+
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Nieprawidlowy typ tokena.",
+        )
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token nie zawiera identyfikatora uzytkownika.",
+        )
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Uzytkownik nie istnieje.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Konto uzytkownika jest zablokowane.",
+        )
+
+    return user
+
+
+# ─────────────────────────────
+# PERMISSION MATRIX
+# ─────────────────────────────
+
+PERMISSION_MATRIX: dict[str, dict[RoleEnum, str]] = {
+    "users": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "READ",
+        RoleEnum.BRYGADZISTA: "NONE",
+        RoleEnum.MAGAZYNIER: "NONE",
+    },
+    "systemConfig": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "NONE",
+        RoleEnum.BRYGADZISTA: "NONE",
+        RoleEnum.MAGAZYNIER: "NONE",
+    },
+    "dictionaries": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "READ",
+    },
+    "documents": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "OPERATIONAL",
+    },
+    "tasks": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "EXECUTE",
+    },
+    "taskManagement": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "NONE",
+    },
+    "movements": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "EXECUTE",
+    },
+    "stockStatus": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "NONE",
+    },
+    "inventory": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "OPERATIONAL",
+        RoleEnum.MAGAZYNIER: "NONE",
+    },
+    "reports": {
+        RoleEnum.ADMINISTRATOR: "FULL",
+        RoleEnum.KIEROWNIK: "FULL",
+        RoleEnum.BRYGADZISTA: "FULL",
+        RoleEnum.MAGAZYNIER: "OWN",
+    },
+}
+
+LEVEL_HIERARCHY = {
+    "NONE": 0,
+    "OWN": 1,
+    "READ": 2,
+    "EXECUTE": 3,
+    "OPERATIONAL": 3,
+    "CREATE": 4,
+    "FULL": 5,
+}
+
+
+def get_permission_level(area: str, role: RoleEnum) -> str:
+    return PERMISSION_MATRIX.get(area, {}).get(role, "NONE")
+
+
+def require_permission(area: str, min_level: str = "READ"):
+    def dependency(current_user: User = Depends(get_current_user)):
+        user_level = get_permission_level(area, current_user.role)
+
+        if LEVEL_HIERARCHY.get(user_level, 0) < LEVEL_HIERARCHY.get(min_level, 0):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Brak uprawnien. Wymagany poziom: {min_level} dla obszaru: {area}.",
+            )
+
+        return current_user
+
+    return Depends(dependency)
+
+
+def require_roles(*roles: RoleEnum):
+    def dependency(current_user: User = Depends(get_current_user)):
+        if current_user.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Brak uprawnien dla tej roli.",
+            )
+        return current_user
+
+    return Depends(dependency)
