@@ -7,11 +7,12 @@ from app.middleware.auth import require_permission
 from app.models.models import User, Location, LocationTypeEnum
 from app.schemas.schemas import LocationCreate, LocationUpdate, LocationResponse, PaginatedResponse
 from app.services.audit import log_action
+from app.services.versioning import check_version
 
 router = APIRouter(prefix="/locations", tags=["Locations"])
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[LocationResponse])
 def list_locations(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -19,16 +20,18 @@ def list_locations(
     current_user: User = require_permission("dictionaries", "READ"),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Location).filter(Location.is_active.is_(True))
+    count_query = db.query(Location).filter(Location.is_active.is_(True))
+    data_query = db.query(Location).filter(Location.is_active.is_(True))
 
     if search:
         s = f"%{search.strip().lower()}%"
-        query = query.filter(func.lower(Location.code).like(s))
+        count_query = count_query.filter(func.lower(Location.code).like(s))
+        data_query = data_query.filter(func.lower(Location.code).like(s))
 
-    total = query.count()
-    locations = query.offset((page - 1) * page_size).limit(page_size).all()
+    total = count_query.count()
+    locations = data_query.order_by(Location.code).offset((page - 1) * page_size).limit(page_size).all()
 
-    return PaginatedResponse(
+    return PaginatedResponse[LocationResponse](
         items=[LocationResponse.model_validate(loc) for loc in locations],
         total=total,
         page=page,
@@ -44,22 +47,23 @@ def create_location(
     db: Session = Depends(get_db),
 ):
     if db.query(Location).filter(Location.code == data.code).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Lokalizacja '{data.code}' już istnieje.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Lokalizacja '{data.code}' już istnieje.",
+        )
 
     location = Location(
         code=data.code,
         type=LocationTypeEnum(data.type),
-        is_buffer=data.is_buffer,
         row=data.row,
         rack=data.rack,
         shelf=data.shelf,
     )
     db.add(location)
+    db.flush()
     log_action(
-        db,
-        "CREATE",
-        "Location",
-        details={"code": data.code, "type": data.type, "is_buffer": data.is_buffer},
+        db, "CREATE", "Location", location.id,
+        details={"code": data.code, "type": data.type},
         user_id=current_user.id,
     )
     db.commit()
@@ -75,7 +79,10 @@ def get_location(
 ):
     location = db.query(Location).filter(Location.id == location_id).first()
     if not location:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lokalizacja nie znaleziona.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lokalizacja nie znaleziona.",
+        )
     return LocationResponse.model_validate(location)
 
 
@@ -88,15 +95,26 @@ def update_location(
 ):
     location = db.query(Location).filter(Location.id == location_id).first()
     if not location:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lokalizacja nie znaleziona.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Lokalizacja nie znaleziona.",
+        )
 
     payload = data.model_dump(exclude_unset=True)
+    payload.pop("version", None)
 
-    # Konflikt code sprawdzamy przed przypisaniem
+    check_version(location, data.version)
+
     if "code" in payload and payload["code"]:
-        dup = db.query(Location).filter(Location.code == payload["code"], Location.id != location_id).first()
+        dup = db.query(Location).filter(
+            Location.code == payload["code"],
+            Location.id != location_id,
+        ).first()
         if dup:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Lokalizacja '{payload['code']}' już istnieje.")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Lokalizacja '{payload['code']}' już istnieje.",
+            )
 
     changes = {}
     for field, value in payload.items():
@@ -106,6 +124,7 @@ def update_location(
             setattr(location, field, value)
         changes[field] = value
 
+    location.version += 1
     log_action(db, "UPDATE", "Location", location.id, details=changes, user_id=current_user.id)
     db.commit()
     db.refresh(location)

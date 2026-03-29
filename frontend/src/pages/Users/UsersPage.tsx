@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -8,22 +8,19 @@ import {
   InputAdornment,
   IconButton,
   Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  MenuItem,
   CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
-import { PersonAdd, Search, Lock, LockOpen, Edit, Refresh } from '@mui/icons-material';
-import { Controller, useForm } from 'react-hook-form';
+import { PersonAdd, Search, Lock, LockOpen, Edit } from '@mui/icons-material';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-
-import apiClient from '@/api/client';
 import { Role } from '@/constants/roles';
 import { useNotification } from '@/context/NotificationContext';
 import { userSchema, type UserFormData } from '@/utils/validators';
+import FormField from '@/components/Form/FormField';
+import FormSelect from '@/components/Form/FormSelect';
+import FormModal from '@/components/Modal/FormModal';
+import { useUsers, type UserItem } from '@/hooks/useUsers';
 
 const ROLE_COLORS: Record<Role, string> = {
   [Role.ADMIN]: '#D32F2F',
@@ -39,204 +36,118 @@ const ROLE_LABELS: Record<Role, string> = {
   [Role.WORKER]: 'Magazynier',
 };
 
-const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({
-  value,
-  label,
-}));
-
-type ApiUser = {
-  id: number;
-  login_code: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  role: Role | string;
-  is_active: boolean;
-  created_at: string;
-  last_login?: string | null;
-};
-
-type UiUser = {
-  id: number;
-  login: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: Role;
-  active: boolean;
-  lastLogin: string;
-};
-
-const toUiUser = (u: ApiUser): UiUser => ({
-  id: u.id,
-  login: u.login_code,
-  email: u.email,
-  firstName: u.first_name,
-  lastName: u.last_name,
-  role: u.role as Role,
-  active: Boolean(u.is_active),
-  lastLogin: u.last_login ? String(u.last_login) : '-',
-});
+const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
 
 const UsersPage = () => {
-  const { showSuccess, showError } = useNotification();
-
   const [search, setSearch] = useState('');
-  const [users, setUsers] = useState<UiUser[]>([]);
-  const [loadingList, setLoadingList] = useState(false);
-
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UiUser | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { showError } = useNotification();
+
+  const { users, total, isLoading, createUser, updateUser, toggleActive } = useUsers({
+    search: debouncedSearch,
+    pageSize: 100,
+  });
 
   const createForm = useForm<UserFormData>({
     resolver: zodResolver(userSchema),
     defaultValues: { email: '', firstName: '', lastName: '', role: '' },
-    mode: 'onTouched',
   });
 
   const editForm = useForm<UserFormData>({
     resolver: zodResolver(userSchema),
-    defaultValues: { email: '', firstName: '', lastName: '', role: '' },
-    mode: 'onTouched',
   });
 
-  const fetchUsers = async () => {
-    setLoadingList(true);
-    try {
-      // backend ma paginację: /api/v1/users?page=1&page_size=100
-      const res = await apiClient.get('/users', { params: { page: 1, page_size: 100 } });
-      const items: ApiUser[] = res.data?.items ?? [];
-      setUsers(items.map(toUiUser));
-    } catch (e: any) {
-      showError(e?.response?.data?.detail || 'Nie udało się pobrać listy użytkowników.');
-    } finally {
-      setLoadingList(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+    (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return users;
-
-    return users.filter(
-      (u) =>
-        u.firstName.toLowerCase().includes(q) ||
-        u.lastName.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        u.login.includes(q),
-    );
-  }, [users, search]);
-
-  const openCreate = () => {
-    createForm.reset({ email: '', firstName: '', lastName: '', role: '' });
-    setCreateOpen(true);
-  };
-
-  const openEdit = (user: UiUser) => {
-    setSelectedUser(user);
-    editForm.reset({
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-    });
-    setEditOpen(true);
-  };
-
   const handleCreate = async (data: UserFormData) => {
+    setIsSubmitting(true);
     try {
-      // POST /users: email, first_name, last_name, role, password
-      // W swagger widzę że password jest wymagane przy tworzeniu
-      const res = await apiClient.post('/users', {
+      await createUser({
         email: data.email,
         first_name: data.firstName,
         last_name: data.lastName,
         role: data.role,
-        // jeśli w Twoim UI docelowo ma być “link aktywacyjny”, to backend trzeba przebudować
-        // na razie (wg swaggera) password jest wymagane:
-        password: (data as any).password || 'Admin123!', // awaryjnie jeśli schema wymaga hasła w backendzie
+        password: data.password ?? '',
       });
-
-      const created: ApiUser = res.data;
-      const ui = toUiUser(created);
-
-      setUsers((prev) => [ui, ...prev]);
       setCreateOpen(false);
-
-      showSuccess(
-        `Utworzono konto: ${ui.firstName} ${ui.lastName}. Login: ${ui.login} (hasło ustawione w backendzie).`,
-      );
-    } catch (e: any) {
-      showError(e?.response?.data?.detail || 'Nie udało się utworzyć użytkownika.');
+      createForm.reset();
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się utworzyć konta.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleEdit = async (data: UserFormData) => {
     if (!selectedUser) return;
-
+    setIsSubmitting(true);
     try {
-      const res = await apiClient.patch(`/users/${selectedUser.id}`, {
+      await updateUser(selectedUser.id, {
         email: data.email,
         first_name: data.firstName,
         last_name: data.lastName,
         role: data.role,
-        is_active: selectedUser.active,
+        version: selectedUser.version,
       });
-
-      const updated: ApiUser = res.data;
-      const ui = toUiUser(updated);
-
-      setUsers((prev) => prev.map((u) => (u.id === ui.id ? ui : u)));
       setEditOpen(false);
       setSelectedUser(null);
-
-      showSuccess(`Zaktualizowano użytkownika: ${ui.firstName} ${ui.lastName}.`);
-    } catch (e: any) {
-      showError(e?.response?.data?.detail || 'Nie udało się zaktualizować użytkownika.');
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zaktualizować danych.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const toggleActive = async (user: UiUser) => {
+  const handleToggleActive = async (user: UserItem) => {
     try {
-      const res = await apiClient.patch(`/users/${user.id}`, {
-        email: user.email,
-        first_name: user.firstName,
-        last_name: user.lastName,
-        role: user.role,
-        is_active: !user.active,
-      });
-
-      const updated: ApiUser = res.data;
-      const ui = toUiUser(updated);
-
-      setUsers((prev) => prev.map((u) => (u.id === ui.id ? ui : u)));
-      showSuccess(`Konto ${ui.login} zostało ${ui.active ? 'odblokowane' : 'zablokowane'}.`);
-    } catch (e: any) {
-      showError(e?.response?.data?.detail || 'Nie udało się zmienić statusu użytkownika.');
+      await toggleActive(user);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zmienić statusu konta.');
     }
+  };
+
+  const openEdit = (user: UserItem) => {
+    setSelectedUser(user);
+    editForm.reset({
+      email: user.email,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.role,
+    });
+    setEditOpen(true);
   };
 
   const columns: GridColDef[] = [
-    { field: 'login', headerName: 'Login', width: 100 },
-    { field: 'firstName', headerName: 'Imię', width: 140 },
-    { field: 'lastName', headerName: 'Nazwisko', width: 160 },
-    { field: 'email', headerName: 'Email', flex: 1, minWidth: 220 },
+    { field: 'login_code', headerName: 'Login', width: 90 },
+    { field: 'first_name', headerName: 'Imię', width: 120 },
+    { field: 'last_name', headerName: 'Nazwisko', width: 140 },
+    { field: 'email', headerName: 'Email', flex: 1, minWidth: 180 },
     {
       field: 'role',
       headerName: 'Rola',
-      width: 150,
+      width: 130,
       renderCell: (params) => (
         <Chip
-          label={ROLE_LABELS[params.value as Role] ?? String(params.value)}
+          label={ROLE_LABELS[params.value as Role] ?? params.value}
           size="small"
           sx={{
-            bgcolor: ROLE_COLORS[params.value as Role] ?? '#455A64',
+            bgcolor: ROLE_COLORS[params.value as Role] ?? '#999',
             color: 'white',
             fontWeight: 600,
           }}
@@ -244,9 +155,9 @@ const UsersPage = () => {
       ),
     },
     {
-      field: 'active',
+      field: 'is_active',
       headerName: 'Status',
-      width: 140,
+      width: 130,
       renderCell: (params) => (
         <Chip
           icon={params.value ? <LockOpen sx={{ fontSize: 16 }} /> : <Lock sx={{ fontSize: 16 }} />}
@@ -257,11 +168,17 @@ const UsersPage = () => {
         />
       ),
     },
-    { field: 'lastLogin', headerName: 'Ostatnie logowanie', width: 180 },
+    {
+      field: 'created_at',
+      headerName: 'Data utworzenia',
+      width: 160,
+      valueFormatter: (value: string) =>
+        value ? new Date(value).toLocaleDateString('pl-PL') : '—',
+    },
     {
       field: 'actions',
       headerName: 'Akcje',
-      width: 140,
+      width: 120,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
@@ -271,14 +188,13 @@ const UsersPage = () => {
               <Edit fontSize="small" />
             </IconButton>
           </Tooltip>
-
-          <Tooltip title={params.row.active ? 'Zablokuj' : 'Odblokuj'}>
+          <Tooltip title={params.row.is_active ? 'Zablokuj' : 'Odblokuj'}>
             <IconButton
               size="small"
-              color={params.row.active ? 'error' : 'success'}
-              onClick={() => toggleActive(params.row)}
+              color={params.row.is_active ? 'error' : 'success'}
+              onClick={() => handleToggleActive(params.row)}
             >
-              {params.row.active ? <Lock fontSize="small" /> : <LockOpen fontSize="small" />}
+              {params.row.is_active ? <Lock fontSize="small" /> : <LockOpen fontSize="small" />}
             </IconButton>
           </Tooltip>
         </Box>
@@ -286,228 +202,127 @@ const UsersPage = () => {
     },
   ];
 
+  const renderForm = (form: typeof createForm, isCreate = false) => (
+    <>
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        <FormField
+          label="Imię"
+          error={form.formState.errors.firstName}
+          {...form.register('firstName')}
+        />
+        <FormField
+          label="Nazwisko"
+          error={form.formState.errors.lastName}
+          {...form.register('lastName')}
+        />
+      </Box>
+      <FormField
+        label="Adres email"
+        placeholder="jan.kowalski@firma.pl"
+        error={form.formState.errors.email}
+        {...form.register('email')}
+      />
+      {isCreate && (
+        <FormField
+          label="Hasło"
+          type="password"
+          error={form.formState.errors.password}
+          {...form.register('password')}
+        />
+      )}
+      <Controller
+        name="role"
+        control={form.control}
+        render={({ field }) => (
+          <FormSelect
+            label="Rola"
+            options={ROLE_OPTIONS}
+            error={form.formState.errors.role}
+            {...field}
+          />
+        )}
+      />
+    </>
+  );
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>
           Użytkownicy
         </Typography>
-
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={loadingList ? <CircularProgress size={16} /> : <Refresh />}
-            onClick={fetchUsers}
-            disabled={loadingList}
-          >
-            Odśwież
-          </Button>
-
-          <Button variant="contained" startIcon={<PersonAdd />} onClick={openCreate}>
-            Utwórz konto
-          </Button>
-        </Box>
+        <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setCreateOpen(true)}>
+          Utwórz konto
+        </Button>
       </Box>
+
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Łącznie: {total}
+      </Typography>
 
       <TextField
         placeholder="Szukaj po imieniu, nazwisku, emailu lub loginie..."
         size="small"
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => handleSearchChange(e.target.value)}
         sx={{ mb: 2, width: 420 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Search />
-            </InputAdornment>
-          ),
+        slotProps={{
+          input: {
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search />
+              </InputAdornment>
+            ),
+          },
         }}
       />
 
-      <DataGrid
-        rows={filtered}
-        columns={columns}
-        pageSizeOptions={[10, 25, 100]}
-        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={users}
+          columns={columns}
+          pageSizeOptions={[10, 25]}
+          initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
 
-      {/* CREATE MODAL */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Utwórz nowe konto</DialogTitle>
-        <DialogContent sx={{ pt: 2, display: 'grid', gap: 2 }}>
-          <Controller
-            name="firstName"
-            control={createForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Imię"
-                error={!!createForm.formState.errors.firstName}
-                helperText={createForm.formState.errors.firstName?.message}
-                fullWidth
-              />
-            )}
-          />
+      <FormModal
+        open={createOpen}
+        onClose={() => {
+          setCreateOpen(false);
+          createForm.reset();
+        }}
+        onSubmit={createForm.handleSubmit(handleCreate)}
+        title="Utwórz nowe konto"
+        submitLabel="Utwórz konto"
+        isSubmitting={isSubmitting}
+      >
+        {renderForm(createForm, true)}
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          Login (5-cyfrowy kod) zostanie wygenerowany automatycznie przez system.
+        </Typography>
+      </FormModal>
 
-          <Controller
-            name="lastName"
-            control={createForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Nazwisko"
-                error={!!createForm.formState.errors.lastName}
-                helperText={createForm.formState.errors.lastName?.message}
-                fullWidth
-              />
-            )}
-          />
-
-          <Controller
-            name="email"
-            control={createForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Adres email"
-                placeholder="jan.kowalski@firma.pl"
-                error={!!createForm.formState.errors.email}
-                helperText={createForm.formState.errors.email?.message}
-                fullWidth
-              />
-            )}
-          />
-
-          <Controller
-            name="role"
-            control={createForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                select
-                label="Rola"
-                error={!!createForm.formState.errors.role}
-                helperText={createForm.formState.errors.role?.message}
-                fullWidth
-              >
-                {ROLE_OPTIONS.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-          />
-
-          <Typography variant="caption" color="text.secondary">
-            Login (5-cyfrowy kod) zostanie wygenerowany przez backend. Hasło — według wymagań
-            backendu.
-          </Typography>
-        </DialogContent>
-
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Anuluj</Button>
-          <Button
-            variant="contained"
-            onClick={createForm.handleSubmit(handleCreate)}
-            disabled={createForm.formState.isSubmitting}
-          >
-            Utwórz konto
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* EDIT MODAL */}
-      <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle>
-          Edytuj: {selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : ''}
-        </DialogTitle>
-        <DialogContent sx={{ pt: 2, display: 'grid', gap: 2 }}>
-          <Controller
-            name="firstName"
-            control={editForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Imię"
-                error={!!editForm.formState.errors.firstName}
-                helperText={editForm.formState.errors.firstName?.message}
-                fullWidth
-              />
-            )}
-          />
-
-          <Controller
-            name="lastName"
-            control={editForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Nazwisko"
-                error={!!editForm.formState.errors.lastName}
-                helperText={editForm.formState.errors.lastName?.message}
-                fullWidth
-              />
-            )}
-          />
-
-          <Controller
-            name="email"
-            control={editForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                label="Adres email"
-                error={!!editForm.formState.errors.email}
-                helperText={editForm.formState.errors.email?.message}
-                fullWidth
-              />
-            )}
-          />
-
-          <Controller
-            name="role"
-            control={editForm.control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                select
-                label="Rola"
-                error={!!editForm.formState.errors.role}
-                helperText={editForm.formState.errors.role?.message}
-                fullWidth
-              >
-                {ROLE_OPTIONS.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-          />
-        </DialogContent>
-
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setEditOpen(false);
-              setSelectedUser(null);
-            }}
-          >
-            Anuluj
-          </Button>
-          <Button
-            variant="contained"
-            onClick={editForm.handleSubmit(handleEdit)}
-            disabled={editForm.formState.isSubmitting}
-          >
-            Zapisz zmiany
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <FormModal
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false);
+          setSelectedUser(null);
+        }}
+        onSubmit={editForm.handleSubmit(handleEdit)}
+        title={`Edytuj: ${selectedUser?.first_name || ''} ${selectedUser?.last_name || ''}`}
+        submitLabel="Zapisz zmiany"
+        isSubmitting={isSubmitting}
+      >
+        {renderForm(editForm, false)}
+      </FormModal>
     </Box>
   );
 };

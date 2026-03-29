@@ -1,7 +1,7 @@
-import { Grid, Card, CardContent, Typography, Box } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Grid, Card, CardContent, Typography, Box, CircularProgress } from '@mui/material';
 import { Inventory2, Assignment, CallReceived, Warning } from '@mui/icons-material';
-import DashboardSkeleton from '@/components/Table/DashboardSkeleton';
-import useLoadingDemo from '@/hooks/useLoadingDemo';
+import apiClient from '@/api/client';
 
 interface StatCardProps {
   title: string;
@@ -26,18 +26,52 @@ const StatCard = ({ title, value, icon, color }: StatCardProps) => (
   </Card>
 );
 
+interface DashboardStats {
+  products: number;
+  pendingTasks: number;
+  todayDocuments: number;
+  blockedStock: number;
+}
+
 const DashboardPage = () => {
-  const isLoading = useLoadingDemo(1200);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // TODO: Zamienić na dane z API
-  const stats = {
-    products: 1247,
-    pendingTasks: 18,
-    todayReceived: 5,
-    blockedStock: 3,
-  };
+  useEffect(() => {
+    const fetchStats = async () => {
+      setIsLoading(true);
+      try {
+        const [productsRes, tasksRes, docsRes, stockRes] = await Promise.all([
+          apiClient.get('/products?page=1&page_size=1'),
+          apiClient.get('/tasks?page=1&page_size=1&status_filter=NEW'),
+          apiClient.get('/documents?page=1&page_size=1'),
+          apiClient.get('/stock?page=1&page_size=1&status_filter=BLOCKED'),
+        ]);
 
-  if (isLoading) return <DashboardSkeleton />;
+        setStats({
+          products: productsRes.data.total ?? 0,
+          pendingTasks: tasksRes.data.total ?? 0,
+          todayDocuments: docsRes.data.total ?? 0,
+          blockedStock: stockRes.data.total ?? 0,
+        });
+      } catch {
+        // Nie blokujemy dashboardu przy błędzie — pokazujemy 0
+        setStats({ products: 0, pendingTasks: 0, todayDocuments: 0, blockedStock: 0 });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -48,23 +82,23 @@ const DashboardPage = () => {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Produkty (SKU)"
-            value={stats.products}
+            value={stats?.products ?? 0}
             icon={<Inventory2 fontSize="inherit" />}
             color="#1565C0"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
-            title="Zadania do realizacji"
-            value={stats.pendingTasks}
+            title="Nowe zadania"
+            value={stats?.pendingTasks ?? 0}
             icon={<Assignment fontSize="inherit" />}
             color="#FF8F00"
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
-            title="Przyjęcia dziś"
-            value={stats.todayReceived}
+            title="Dokumenty łącznie"
+            value={stats?.todayDocuments ?? 0}
             icon={<CallReceived fontSize="inherit" />}
             color="#2E7D32"
           />
@@ -72,7 +106,7 @@ const DashboardPage = () => {
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard
             title="Zablokowany towar"
-            value={stats.blockedStock}
+            value={stats?.blockedStock ?? 0}
             icon={<Warning fontSize="inherit" />}
             color="#D32F2F"
           />

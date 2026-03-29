@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -13,9 +13,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
-import { Add, Search, Delete, Visibility, Close, Download } from '@mui/icons-material';
+import { Add, Search, Visibility, Close, Download, Delete } from '@mui/icons-material';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -28,93 +29,33 @@ import { useNotification } from '@/context/NotificationContext';
 import { documentPZSchema, type DocumentPZFormData } from '@/utils/validators';
 import FormField from '@/components/Form/FormField';
 import FormModal from '@/components/Modal/FormModal';
+import ScanButton from '@/components/Scanner/ScanButton';
+import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
+import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
+import apiClient from '@/api/client';
 
-const MOCK_PRODUCTS = [
-  { id: 1, sku: 'SKU-001', name: 'Śruba M8x40' },
-  { id: 2, sku: 'SKU-002', name: 'Nakrętka M8' },
-  { id: 3, sku: 'SKU-003', name: 'Olej hydrauliczny 5L' },
-  { id: 4, sku: 'SKU-004', name: 'Filtr powietrza FP-200' },
-  { id: 5, sku: 'SKU-005', name: 'Uszczelka gumowa 50mm' },
-  { id: 6, sku: 'SKU-006', name: 'Łożysko kulkowe 6205' },
-  { id: 7, sku: 'SKU-007', name: 'Pasek klinowy B-1250' },
-  { id: 8, sku: 'SKU-008', name: 'Smar łożyskowy 400g' },
-];
-
-interface PZDocument {
+interface ProductOption {
   id: number;
-  number: string;
-  date: string;
-  supplier: string;
-  items: { productId: number; productName: string; quantity: number }[];
-  status: DocumentStatus;
+  sku: string;
+  name: string;
 }
-
-const INITIAL_PZ: PZDocument[] = [
-  {
-    id: 1,
-    number: 'PZ/2025/001',
-    date: '2025-06-15',
-    supplier: 'Hurtownia ABC',
-    items: [
-      { productId: 1, productName: 'Śruba M8x40', quantity: 500 },
-      { productId: 2, productName: 'Nakrętka M8', quantity: 1000 },
-    ],
-    status: DocumentStatus.COMPLETED,
-  },
-  {
-    id: 2,
-    number: 'PZ/2025/002',
-    date: '2025-06-16',
-    supplier: 'Dostawca XYZ',
-    items: [{ productId: 3, productName: 'Olej hydrauliczny 5L', quantity: 50 }],
-    status: DocumentStatus.CONFIRMED,
-  },
-  {
-    id: 3,
-    number: 'PZ/2025/003',
-    date: '2025-06-17',
-    supplier: 'Producent 123',
-    items: [
-      { productId: 4, productName: 'Filtr powietrza FP-200', quantity: 100 },
-      { productId: 5, productName: 'Uszczelka gumowa 50mm', quantity: 300 },
-    ],
-    status: DocumentStatus.IN_PROGRESS,
-  },
-  {
-    id: 4,
-    number: 'PZ/2025/004',
-    date: '2025-06-17',
-    supplier: 'Hurtownia ABC',
-    items: [{ productId: 6, productName: 'Łożysko kulkowe 6205', quantity: 200 }],
-    status: DocumentStatus.DRAFT,
-  },
-  {
-    id: 5,
-    number: 'PZ/2025/005',
-    date: '2025-06-18',
-    supplier: 'Magazyn Centralny',
-    items: [{ productId: 7, productName: 'Pasek klinowy B-1250', quantity: 80 }],
-    status: DocumentStatus.DRAFT,
-  },
-  {
-    id: 6,
-    number: 'PZ/2025/006',
-    date: '2025-06-18',
-    supplier: 'Dostawca XYZ',
-    items: [{ productId: 8, productName: 'Smar łożyskowy 400g', quantity: 30 }],
-    status: DocumentStatus.CANCELLED,
-  },
-];
 
 const DocumentsPZPage = () => {
   const [search, setSearch] = useState('');
-  const [documents, setDocuments] = useState<PZDocument[]>(INITIAL_PZ);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [selectedDoc, setSelectedDoc] = useState<PZDocument | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { canCreate } = usePermissions();
-  const { showSuccess } = useNotification();
+  const { showError } = useNotification();
+
+  const { documents, total, isLoading, createPZ, confirmDocument, generateTasks } = useDocuments({
+    docType: 'PZ',
+    search: debouncedSearch,
+  });
 
   const {
     register,
@@ -124,56 +65,80 @@ const DocumentsPZPage = () => {
     formState: { errors },
   } = useForm<DocumentPZFormData>({
     resolver: zodResolver(documentPZSchema),
-    defaultValues: {
-      supplier: '',
-      items: [{ productId: 0, quantity: 1 }],
-    },
+    defaultValues: { supplier: '', items: [{ productId: 0, quantity: 1 }] },
   });
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: 'items',
-  });
+  const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
-  const handleCreate = (data: DocumentPZFormData) => {
-    const nextNum = documents.length + 1;
-    const newDoc: PZDocument = {
-      id: nextNum,
-      number: `PZ/2025/${String(nextNum).padStart(3, '0')}`,
-      date: new Date().toISOString().split('T')[0],
-      supplier: data.supplier,
-      items: data.items.map((item) => {
-        const product = MOCK_PRODUCTS.find((p) => p.id === item.productId);
-        return {
-          productId: item.productId,
-          productName: product?.name || 'Nieznany',
-          quantity: item.quantity,
-        };
-      }),
-      status: DocumentStatus.DRAFT,
-    };
-    setDocuments([...documents, newDoc]);
-    setCreateOpen(false);
-    reset({ supplier: '', items: [{ productId: 0, quantity: 1 }] });
-    showSuccess(`Dokument ${newDoc.number} został utworzony.`);
+  // Pobierz produkty przy otwarciu modalu
+  useEffect(() => {
+    if (!createOpen) return;
+    apiClient
+      .get('/products?page=1&page_size=100')
+      .then((res) => setProducts(res.data.items ?? []))
+      .catch(() => showError('Nie udało się pobrać produktów.'));
+  }, [createOpen]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+    (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }, []);
+
+  const handleCreate = async (data: DocumentPZFormData) => {
+    setIsSubmitting(true);
+    try {
+      await createPZ({
+        supplier: data.supplier,
+        items: data.items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
+      });
+      setCreateOpen(false);
+      reset({ supplier: '', items: [{ productId: 0, quantity: 1 }] });
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się utworzyć dokumentu.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const openDetail = (doc: PZDocument) => {
-    setSelectedDoc(doc);
-    setDetailOpen(true);
+  const handleConfirm = async (id: number) => {
+    try {
+      await confirmDocument(id);
+      setDetailOpen(false);
+      setSelectedDoc(null);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zatwierdzić dokumentu.');
+    }
+  };
+
+  const handleGenerateTasks = async (id: number) => {
+    try {
+      await generateTasks(id);
+      setDetailOpen(false);
+      setSelectedDoc(null);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się wygenerować zadań.');
+    }
   };
 
   const columns: GridColDef[] = [
     { field: 'number', headerName: 'Numer dokumentu', width: 170 },
-    { field: 'date', headerName: 'Data', width: 120 },
-    { field: 'supplier', headerName: 'Dostawca', flex: 1, minWidth: 160 },
     {
-      field: 'items',
-      headerName: 'Pozycje',
-      width: 90,
-      type: 'number',
-      valueGetter: (_value: unknown, row: PZDocument) => row.items.length,
+      field: 'created_at',
+      headerName: 'Data',
+      width: 120,
+      valueFormatter: (value: string) =>
+        value ? new Date(value).toLocaleDateString('pl-PL') : '—',
     },
+    { field: 'supplier', headerName: 'Dostawca', flex: 1, minWidth: 160 },
     {
       field: 'status',
       headerName: 'Status',
@@ -198,7 +163,13 @@ const DocumentsPZPage = () => {
       filterable: false,
       renderCell: (params) => (
         <Tooltip title="Podgląd">
-          <IconButton size="small" onClick={() => openDetail(params.row)}>
+          <IconButton
+            size="small"
+            onClick={() => {
+              setSelectedDoc(params.row);
+              setDetailOpen(true);
+            }}
+          >
             <Visibility fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -206,11 +177,12 @@ const DocumentsPZPage = () => {
     },
   ];
 
-  const filtered = documents.filter(
-    (doc) =>
-      doc.number.toLowerCase().includes(search.toLowerCase()) ||
-      doc.supplier.toLowerCase().includes(search.toLowerCase()),
-  );
+  const handleScan = useCallback((code: string) => {
+    setSearch(code);
+    setDebouncedSearch(code);
+  }, []);
+
+  useExternalScanner({ onScan: handleScan });
 
   return (
     <Box>
@@ -225,34 +197,46 @@ const DocumentsPZPage = () => {
         )}
       </Box>
 
-      <TextField
-        placeholder="Szukaj po numerze lub dostawcy..."
-        size="small"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        sx={{ mb: 2, width: 350 }}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Łącznie: {total}
+      </Typography>
 
-      <DataGrid
-        rows={filtered}
-        columns={columns}
-        pageSizeOptions={[10, 25, 50]}
-        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <TextField
+          placeholder="Szukaj po numerze lub dostawcy..."
+          size="small"
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          sx={{ width: 350 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <ScanButton onScan={handleScan} title="Skanuj kod dokumentu" />
+      </Box>
 
-      {/* Modal: Nowe przyjęcie */}
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={documents}
+          columns={columns}
+          pageSizeOptions={[10, 25, 50]}
+          initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
+
       <FormModal
         open={createOpen}
         onClose={() => {
@@ -263,6 +247,7 @@ const DocumentsPZPage = () => {
         title="Nowe przyjęcie zewnętrzne (PZ)"
         maxWidth="md"
         submitLabel="Utwórz dokument"
+        isSubmitting={isSubmitting}
       >
         <FormField
           label="Dostawca"
@@ -270,16 +255,10 @@ const DocumentsPZPage = () => {
           error={errors.supplier}
           {...register('supplier')}
         />
-
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
           Pozycje dokumentu
         </Typography>
-        {errors.items?.root && (
-          <Typography variant="caption" color="error" sx={{ mb: 1, display: 'block' }}>
-            {errors.items.root.message}
-          </Typography>
-        )}
 
         {fields.map((field, index) => (
           <Box key={field.id} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 1 }}>
@@ -295,7 +274,7 @@ const DocumentsPZPage = () => {
               slotProps={{ select: { native: true } }}
             >
               <option value="">-- Wybierz --</option>
-              {MOCK_PRODUCTS.map((p) => (
+              {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.sku} – {p.name}
                 </option>
@@ -332,7 +311,6 @@ const DocumentsPZPage = () => {
         </Button>
       </FormModal>
 
-      {/* Dialog: Podgląd dokumentu */}
       <Dialog
         open={detailOpen}
         onClose={() => {
@@ -359,22 +337,22 @@ const DocumentsPZPage = () => {
         <DialogContent>
           {selectedDoc && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Data
-                </Typography>
-                <Typography variant="body1" fontWeight={600}>
-                  {selectedDoc.date}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Dostawca
-                </Typography>
-                <Typography variant="body1" fontWeight={600}>
-                  {selectedDoc.supplier}
-                </Typography>
-              </Box>
+              {[
+                {
+                  label: 'Data',
+                  value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
+                },
+                { label: 'Dostawca', value: selectedDoc.supplier ?? '—' },
+              ].map(({ label, value }) => (
+                <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {label}
+                  </Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {value}
+                  </Typography>
+                </Box>
+              ))}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
                   Status
@@ -389,47 +367,24 @@ const DocumentsPZPage = () => {
                   }}
                 />
               </Box>
-              <Divider />
-              <Typography variant="subtitle2" fontWeight={600}>
-                Pozycje
-              </Typography>
-              {selectedDoc.items.map((item, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    bgcolor: 'action.hover',
-                    p: 1.5,
-                    borderRadius: 2,
-                  }}
-                >
-                  <Typography variant="body2">{item.productName}</Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {item.quantity} szt
-                  </Typography>
-                </Box>
-              ))}
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
+          {selectedDoc?.status === DocumentStatus.DRAFT && (
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={() => handleConfirm(selectedDoc.id)}
+            >
+              Zatwierdź
+            </Button>
+          )}
           {selectedDoc?.status === DocumentStatus.CONFIRMED && (
             <Button
               variant="contained"
               color="success"
-              onClick={() => {
-                setDocuments(
-                  documents.map((d) =>
-                    d.id === selectedDoc.id ? { ...d, status: DocumentStatus.IN_PROGRESS } : d,
-                  ),
-                );
-                setDetailOpen(false);
-                setSelectedDoc(null);
-                showSuccess(
-                  `Zadania rozmieszczania dla ${selectedDoc.number} zostały wygenerowane.`,
-                );
-              }}
+              onClick={() => handleGenerateTasks(selectedDoc.id)}
             >
               Generuj zadania
             </Button>
@@ -442,18 +397,17 @@ const DocumentsPZPage = () => {
               generateDocumentPDF({
                 type: 'PZ',
                 number: selectedDoc.number,
-                date: selectedDoc.date,
+                date: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
                 header: [
-                  { label: 'Data', value: selectedDoc.date },
-                  { label: 'Dostawca', value: selectedDoc.supplier },
+                  {
+                    label: 'Data',
+                    value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
+                  },
+                  { label: 'Dostawca', value: selectedDoc.supplier ?? '—' },
                 ],
-                items: selectedDoc.items.map((i) => ({
-                  product: i.productName,
-                  quantity: i.quantity,
-                })),
+                items: [],
                 status: DOCUMENT_STATUS_LABELS[selectedDoc.status],
               });
-              showSuccess('PDF został wygenerowany.');
             }}
           >
             Pobierz PDF

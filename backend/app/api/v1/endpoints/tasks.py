@@ -1,18 +1,22 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.middleware.auth import require_permission
-from app.models.models import User, Task, TaskStatusEnum, TaskTypeEnum, RoleEnum
+from app.models.models import (
+    User, Task, Product, Location,
+    TaskStatusEnum, TaskTypeEnum, RoleEnum,
+)
 from app.schemas.schemas import TaskCreate, TaskResponse, PaginatedResponse
 from app.services.audit import log_action
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[TaskResponse])
 def list_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -20,19 +24,28 @@ def list_tasks(
     current_user: User = require_permission("tasks", "EXECUTE"),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Task)
+    count_query = db.query(func.count(Task.id))
+    data_query = db.query(Task)
 
-    if current_user.role == RoleEnum.MAGAZYNIER:
-        query = query.filter(Task.assigned_to_id == current_user.id)
+    if current_user.role == RoleEnum.WORKER:
+        count_query = count_query.filter(Task.assigned_to_id == current_user.id)
+        data_query = data_query.filter(Task.assigned_to_id == current_user.id)
 
     if status_filter:
-        query = query.filter(Task.status == TaskStatusEnum(status_filter))
+        try:
+            task_status = TaskStatusEnum(status_filter)
+            count_query = count_query.filter(Task.status == task_status)
+            data_query = data_query.filter(Task.status == task_status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nieprawidlowy status zadania.",
+            )
 
-    query = query.order_by(Task.created_at.desc())
-    total = query.count()
-    tasks = query.offset((page - 1) * page_size).limit(page_size).all()
+    total = count_query.scalar()
+    tasks = data_query.order_by(Task.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-    return PaginatedResponse(
+    return PaginatedResponse[TaskResponse](
         items=[TaskResponse.model_validate(t) for t in tasks],
         total=total,
         page=page,
@@ -47,8 +60,28 @@ def create_task(
     current_user: User = require_permission("taskManagement", "FULL"),
     db: Session = Depends(get_db),
 ):
-    if not db.query(User).filter(User.id == data.assigned_to_id).first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Przypisany uzytkownik nie istnieje.")
+    if not db.query(User).filter(User.id == data.assigned_to_id, User.is_active.is_(True)).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Przypisany uzytkownik nie istnieje lub jest nieaktywny.",
+        )
+
+    if data.product_id and not db.query(Product).filter(
+        Product.id == data.product_id, Product.is_active.is_(True)
+    ).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Produkt ID {data.product_id} nie istnieje lub jest nieaktywny.",
+        )
+
+    for loc_id in filter(None, [data.from_location_id, data.to_location_id]):
+        if not db.query(Location).filter(
+            Location.id == loc_id, Location.is_active.is_(True)
+        ).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Lokalizacja ID {loc_id} nie istnieje lub jest nieaktywna.",
+            )
 
     task = Task(
         type=TaskTypeEnum(data.type),
@@ -62,10 +95,14 @@ def create_task(
     )
 
     db.add(task)
-    log_action(db, "CREATE", "Task", details={"type": data.type, "assigned_to": data.assigned_to_id}, user_id=current_user.id)
+    db.flush()
+    log_action(
+        db, "CREATE", "Task", task.id,
+        details={"type": data.type, "assigned_to": data.assigned_to_id},
+        user_id=current_user.id,
+    )
     db.commit()
     db.refresh(task)
-
     return TaskResponse.model_validate(task)
 
 
@@ -79,11 +116,17 @@ def start_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zadanie nie znalezione.")
 
-    if current_user.role == RoleEnum.MAGAZYNIER and task.assigned_to_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nie mozesz rozpoczac cudzego zadania.")
+    if current_user.role == RoleEnum.WORKER and task.assigned_to_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nie mozesz rozpoczac cudzego zadania.",
+        )
 
     if task.status not in (TaskStatusEnum.NEW, TaskStatusEnum.ASSIGNED):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Zadanie nie moze zostac rozpoczete.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Zadanie nie moze zostac rozpoczete.",
+        )
 
     task.status = TaskStatusEnum.IN_PROGRESS
     task.started_at = datetime.now(timezone.utc)
@@ -91,7 +134,6 @@ def start_task(
     log_action(db, "START", "Task", task.id, user_id=current_user.id)
     db.commit()
     db.refresh(task)
-
     return TaskResponse.model_validate(task)
 
 
@@ -105,11 +147,17 @@ def complete_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zadanie nie znalezione.")
 
-    if current_user.role == RoleEnum.MAGAZYNIER and task.assigned_to_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nie mozesz zakonczyc cudzego zadania.")
+    if current_user.role == RoleEnum.WORKER and task.assigned_to_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nie mozesz zakonczyc cudzego zadania.",
+        )
 
     if task.status != TaskStatusEnum.IN_PROGRESS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tylko zadania w trakcie realizacji mozna zakonczyc.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tylko zadania w toku mozna zakonczyc.",
+        )
 
     task.status = TaskStatusEnum.COMPLETED
     task.completed_at = datetime.now(timezone.utc)
@@ -117,5 +165,28 @@ def complete_task(
     log_action(db, "COMPLETE", "Task", task.id, user_id=current_user.id)
     db.commit()
     db.refresh(task)
+    return TaskResponse.model_validate(task)
 
+
+@router.post("/{task_id}/cancel", response_model=TaskResponse)
+def cancel_task(
+    task_id: int,
+    current_user: User = require_permission("taskManagement", "FULL"),
+    db: Session = Depends(get_db),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Zadanie nie znalezione.")
+
+    if task.status in (TaskStatusEnum.COMPLETED, TaskStatusEnum.CANCELLED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nie mozna anulowac zadania ktore jest zakonczone lub juz anulowane.",
+        )
+
+    task.status = TaskStatusEnum.CANCELLED
+
+    log_action(db, "CANCEL", "Task", task.id, user_id=current_user.id)
+    db.commit()
+    db.refresh(task)
     return TaskResponse.model_validate(task)

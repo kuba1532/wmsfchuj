@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.database import get_db
@@ -9,13 +12,37 @@ from app.schemas.schemas import (
     StockStatusChange,
     StockLedgerResponse,
     PaginatedResponse,
+    ProductResponse,
+    LocationResponse,
 )
 from app.services.audit import log_action
 
 router = APIRouter(tags=["Stock"])
 
 
-@router.get("/stock", response_model=PaginatedResponse)
+# ─────────────────────────────
+# HELPERS
+# ─────────────────────────────
+
+def _serialize_stock(s: Stock) -> dict:
+    product = ProductResponse.model_validate(s.product).model_dump() if s.product else None
+    location = LocationResponse.model_validate(s.location).model_dump() if s.location else None
+    return {
+        "id": s.id,
+        "product_id": s.product_id,
+        "location_id": s.location_id,
+        "quantity": Decimal(str(s.quantity)),
+        "status": s.status.value if hasattr(s.status, "value") else str(s.status),
+        "product": product,
+        "location": location,
+    }
+
+
+# ─────────────────────────────
+# ENDPOINTS
+# ─────────────────────────────
+
+@router.get("/stock", response_model=PaginatedResponse[dict])
 def list_stock(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -24,21 +51,42 @@ def list_stock(
     current_user: User = require_permission("movements", "READ"),
     db: Session = Depends(get_db),
 ):
-    """MF5: Display current stock levels with product/location details."""
-    query = (
-        db.query(Stock)
-        .options(joinedload(Stock.product), joinedload(Stock.location))
-        .filter(Stock.quantity > 0)
-    )
+    from app.models.models import Product
+
+    # Bazowe filtry (wspolne dla count i data)
+    base_filters = [Stock.quantity > 0]
 
     if status_filter:
-        query = query.filter(Stock.status == StockStatusEnum(status_filter))
+        try:
+            base_filters.append(Stock.status == StockStatusEnum(status_filter))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nieprawidlowy status magazynowy.",
+            )
 
-    total = query.count()
-    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    if search:
+        s = f"%{search.strip().lower()}%"
+        base_filters.append(
+            Stock.product_id.in_(
+                db.query(Product.id).filter(func.lower(Product.name).like(s))
+            )
+        )
 
-    return PaginatedResponse(
-        items=[StockResponse.model_validate(s) for s in items],
+    # Count z tymi samymi filtrami co dane
+    total = db.query(func.count(Stock.id)).filter(*base_filters).scalar()
+
+    # Dane z joinedload
+    data_query = (
+        db.query(Stock)
+        .options(joinedload(Stock.product), joinedload(Stock.location))
+        .filter(*base_filters)
+    )
+
+    rows = data_query.offset((page - 1) * page_size).limit(page_size).all()
+
+    return PaginatedResponse[dict](
+        items=[_serialize_stock(s) for s in rows],
         total=total,
         page=page,
         page_size=page_size,
@@ -46,14 +94,13 @@ def list_stock(
     )
 
 
-@router.patch("/stock/{stock_id}/status", response_model=StockResponse)
+@router.patch("/stock/{stock_id}/status")
 def change_stock_status(
     stock_id: int,
     data: StockStatusChange,
     current_user: User = require_permission("stockStatus", "FULL"),
     db: Session = Depends(get_db),
 ):
-    """MF16: Change stock quality status (Available/Blocked)."""
     stock = (
         db.query(Stock)
         .options(joinedload(Stock.product), joinedload(Stock.location))
@@ -79,11 +126,10 @@ def change_stock_status(
     )
     db.commit()
     db.refresh(stock)
+    return _serialize_stock(stock)
 
-    return StockResponse.model_validate(stock)
 
-
-@router.get("/ledger", response_model=PaginatedResponse)
+@router.get("/ledger", response_model=PaginatedResponse[StockLedgerResponse])
 def list_ledger(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -91,17 +137,28 @@ def list_ledger(
     current_user: User = require_permission("movements", "READ"),
     db: Session = Depends(get_db),
 ):
-    """MF6: Immutable stock movement history."""
-    query = db.query(StockLedger).order_by(StockLedger.created_at.desc())
+    # Oddzielne query dla count
+    count_query = db.query(func.count(StockLedger.id))
 
     if search:
-        query = query.filter(StockLedger.document_number.ilike(f"%{search}%"))
+        count_query = count_query.filter(
+            StockLedger.document_number.ilike(f"%{search}%")
+        )
 
-    total = query.count()
-    items = query.offset((page - 1) * page_size).limit(page_size).all()
+    total = count_query.scalar()
 
-    return PaginatedResponse(
-        items=[StockLedgerResponse.model_validate(entry) for entry in items],
+    # Osobne query dla danych
+    data_query = db.query(StockLedger).order_by(StockLedger.created_at.desc())
+
+    if search:
+        data_query = data_query.filter(
+            StockLedger.document_number.ilike(f"%{search}%")
+        )
+
+    rows = data_query.offset((page - 1) * page_size).limit(page_size).all()
+
+    return PaginatedResponse[StockLedgerResponse](
+        items=[StockLedgerResponse.model_validate(r) for r in rows],
         total=total,
         page=page,
         page_size=page_size,

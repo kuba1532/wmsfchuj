@@ -1,152 +1,130 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import {
   Box,
   Card,
   CardContent,
-  Button,
   Typography,
+  TextField,
+  Button,
   Alert,
-  InputAdornment,
-  IconButton,
+  CircularProgress,
 } from '@mui/material';
-import { Visibility, VisibilityOff, Warehouse, Lock } from '@mui/icons-material';
-import { useNavigate } from 'react-router';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-
+import { Login as LoginIcon } from '@mui/icons-material';
 import { useAuth } from '@/context/AuthContext';
 import { Role } from '@/constants/roles';
-import { loginSchema, type LoginFormData } from '@/utils/validators';
-import FormField from '@/components/Form/FormField';
 import apiClient from '@/api/client';
 
 const LoginPage = () => {
-  const [showPassword, setShowPassword] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-
-  const navigate = useNavigate();
+  const [loginCode, setLoginCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+  const navigate = useNavigate();
 
-  const {
-    control,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { login: '', password: '' },
-    mode: 'onSubmit',
-  });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
 
-  const onSubmit = async (data: LoginFormData) => {
-    console.log('SUBMIT WORKS', data);
-    setErrorMsg('');
-    setLoading(true);
+    if (!/^\d{5}$/.test(loginCode)) {
+      setError('Login musi składać się z 5 cyfr.');
+      return;
+    }
 
+    if (password.length < 1) {
+      setError('Podaj hasło.');
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const res = await apiClient.post('/auth/login', {
-        login: data.login,
-        password: data.password,
+      const response = await apiClient.post('/auth/login', {
+        login: loginCode,
+        password,
       });
 
-      const accessToken: string | undefined = res.data?.access_token;
-      const refreshToken: string | undefined = res.data?.refresh_token;
-      const user = res.data?.user;
+      const { access_token: accessToken, refresh_token: refreshToken, user } = response.data;
 
-      if (!accessToken || !user) {
-        setErrorMsg('Błędna odpowiedź serwera przy logowaniu.');
-        return;
-      }
+      login(accessToken, refreshToken, {
+        id: user.id,
+        login: String(user.login_code),
+        email: String(user.email),
+        first_name: String(user.first_name ?? ''),
+        last_name: String(user.last_name ?? ''),
+        role: user.role as Role,
+      });
 
-      // jeśli Twój AuthContext ma 2 argumenty -> (accessToken, user)
-      // jeśli ma 3 argumenty -> (accessToken, refreshToken, user)
-      try {
-        // @ts-expect-error - wspieramy oba warianty
-        login(accessToken, refreshToken, {
-          id: String(user.id),
-          login: String(user.login_code),
-          email: String(user.email),
-          role: user.role as Role,
-        });
-      } catch {
-        // @ts-expect-error - wspieramy oba warianty
-        login(accessToken, {
-          id: String(user.id),
-          login: String(user.login_code),
-          email: String(user.email),
-          role: user.role as Role,
-        });
-      }
-
-      navigate('/dashboard', { replace: true });
-    } catch (e: any) {
-      const status = e?.response?.status;
-      const detail = e?.response?.data?.detail;
-
-      if (status === 423) {
-        setErrorMsg(detail || 'Konto jest czasowo zablokowane.');
-      } else if (status === 401) {
-        setErrorMsg(detail || 'Nieprawidłowy login lub hasło.');
-      } else {
-        setErrorMsg(detail || 'Wystąpił błąd podczas logowania.');
-      }
+      navigate('/dashboard');
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail ?? 'Nieprawidłowy login lub hasło.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
-      <Card sx={{ width: 'min(520px, 100%)', borderRadius: 3 }}>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        bgcolor: '#F1F5F9',
+      }}
+    >
+      <Card sx={{ width: 400, borderRadius: 3, boxShadow: 6 }}>
         <CardContent sx={{ p: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-            <Warehouse />
-            <Typography variant="h5" fontWeight={700}>
-              WMS — Logowanie
+          <Box sx={{ textAlign: 'center', mb: 3 }}>
+            <Typography variant="h4" fontWeight={800} color="primary">
+              WMS
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              System Zarządzania Magazynem
             </Typography>
           </Box>
 
-          <Typography variant="body2" sx={{ mb: 3, opacity: 0.8 }}>
-            Zaloguj się kodem 5-cyfrowym i hasłem.
-          </Typography>
-
-          {errorMsg && (
-            <Alert icon={<Lock />} severity="error" sx={{ mb: 2 }}>
-              {errorMsg}
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
             </Alert>
           )}
 
-          <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ display: 'grid', gap: 2 }}>
-            <FormField
-              name="login"
-              control={control}
-              label="Kod logowania"
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+          >
+            <TextField
+              label="Login (5-cyfrowy kod)"
+              value={loginCode}
+              onChange={(e) => setLoginCode(e.target.value)}
               placeholder="np. 00001"
-              error={!!errors.login}
-              helperText={errors.login?.message}
-              InputProps={{ inputMode: 'numeric' }}
+              inputProps={{ maxLength: 5 }}
+              size="small"
+              fullWidth
+              autoFocus
             />
 
-            <FormField
-              name="password"
-              control={control}
+            <TextField
               label="Hasło"
-              type={showPassword ? 'text' : 'password'}
-              error={!!errors.password}
-              helperText={errors.password?.message}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton onClick={() => setShowPassword((v) => !v)} edge="end">
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              size="small"
+              fullWidth
             />
 
-            <Button type="submit" variant="contained" size="large" disabled={loading}>
-              {loading ? 'Logowanie...' : 'Zaloguj'}
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              disabled={isLoading}
+              startIcon={isLoading ? <CircularProgress size={18} /> : <LoginIcon />}
+              sx={{ mt: 1, fontWeight: 600 }}
+            >
+              {isLoading ? 'Logowanie...' : 'Zaloguj się'}
             </Button>
           </Box>
         </CardContent>

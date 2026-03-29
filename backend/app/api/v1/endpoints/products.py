@@ -7,11 +7,12 @@ from app.middleware.auth import require_permission
 from app.models.models import User, Product
 from app.schemas.schemas import ProductCreate, ProductUpdate, ProductResponse, PaginatedResponse
 from app.services.audit import log_action
+from app.services.versioning import check_version
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[ProductResponse])
 def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -19,21 +20,23 @@ def list_products(
     current_user: User = require_permission("dictionaries", "READ"),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Product).filter(Product.is_active.is_(True))
+    count_query = db.query(Product).filter(Product.is_active.is_(True))
+    data_query = db.query(Product).filter(Product.is_active.is_(True))
 
     if search:
         s = f"%{search.strip().lower()}%"
-        query = query.filter(
-            or_(
-                func.lower(Product.sku).like(s),
-                func.lower(Product.name).like(s),
-            )
+        search_filter = or_(
+            func.lower(Product.sku).like(s),
+            func.lower(Product.name).like(s),
+            func.lower(Product.ean).like(s),
         )
+        count_query = count_query.filter(search_filter)
+        data_query = data_query.filter(search_filter)
 
-    total = query.count()
-    products = query.offset((page - 1) * page_size).limit(page_size).all()
+    total = count_query.count()
+    products = data_query.order_by(Product.name).offset((page - 1) * page_size).limit(page_size).all()
 
-    return PaginatedResponse(
+    return PaginatedResponse[ProductResponse](
         items=[ProductResponse.model_validate(p) for p in products],
         total=total,
         page=page,
@@ -49,11 +52,25 @@ def create_product(
     db: Session = Depends(get_db),
 ):
     if db.query(Product).filter(Product.sku == data.sku).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"SKU '{data.sku}' już istnieje.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"SKU '{data.sku}' już istnieje.",
+        )
+
+    if data.ean and db.query(Product).filter(Product.ean == data.ean).first():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"EAN '{data.ean}' już istnieje.",
+        )
 
     product = Product(**data.model_dump())
     db.add(product)
-    log_action(db, "CREATE", "Product", details={"sku": data.sku, "name": data.name}, user_id=current_user.id)
+    db.flush()
+    log_action(
+        db, "CREATE", "Product", product.id,
+        details={"sku": data.sku, "ean": data.ean, "name": data.name},
+        user_id=current_user.id,
+    )
     db.commit()
     db.refresh(product)
     return ProductResponse.model_validate(product)
@@ -67,7 +84,10 @@ def get_product(
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produkt nie znaleziony.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produkt nie znaleziony.",
+        )
     return ProductResponse.model_validate(product)
 
 
@@ -80,13 +100,33 @@ def update_product(
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Produkt nie znaleziony.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produkt nie znaleziony.",
+        )
+
+    check_version(product, data.version)
+
+    payload = data.model_dump(exclude_unset=True)
+    payload.pop("version", None)
+
+    if "ean" in payload and payload["ean"]:
+        dup = db.query(Product).filter(
+            Product.ean == payload["ean"],
+            Product.id != product_id,
+        ).first()
+        if dup:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"EAN '{payload['ean']}' już istnieje.",
+            )
 
     changes = {}
-    for field, value in data.model_dump(exclude_unset=True).items():
+    for field, value in payload.items():
         setattr(product, field, value)
         changes[field] = value
 
+    product.version += 1
     log_action(db, "UPDATE", "Product", product.id, details=changes, user_id=current_user.id)
     db.commit()
     db.refresh(product)

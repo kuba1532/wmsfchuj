@@ -1,151 +1,125 @@
-import { useState } from 'react';
-import { Box, Typography, TextField, InputAdornment, Chip } from '@mui/material';
+import { useState, useCallback } from 'react';
+import { Box, Typography, TextField, InputAdornment, Chip, CircularProgress } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Search } from '@mui/icons-material';
+import { useEffect } from 'react';
+import apiClient from '@/api/client';
+import { useNotification } from '@/context/NotificationContext';
 import { MovementType, MOVEMENT_TYPE_LABELS } from '@/constants/movementTypes';
 
-const TYPE_COLORS: Record<MovementType, string> = {
-  [MovementType.RECEIVE]: '#2E7D32',
-  [MovementType.PUTAWAY]: '#1565C0',
-  [MovementType.MOVE]: '#FF8F00',
-  [MovementType.PICK]: '#D32F2F',
-  [MovementType.CORRECTION]: '#7B1FA2',
+const TYPE_COLORS: Record<string, string> = {
+  RECEIPT: '#2E7D32',
+  PUTAWAY: '#1565C0',
+  MOVE: '#FF8F00',
+  PICK: '#D32F2F',
+  INVENTORY_CORRECTION: '#7B1FA2',
 };
 
-const MOCK_LEDGER = [
-  {
-    id: 1,
-    date: '2025-06-18 14:32',
-    type: MovementType.RECEIVE,
-    product: 'Śruba M8x40',
-    quantity: 500,
-    from: '-',
-    to: 'BUFOR-01',
-    user: 'Jan Kowalski',
-    document: 'PZ/2025/005',
-  },
-  {
-    id: 2,
-    date: '2025-06-18 14:45',
-    type: MovementType.PUTAWAY,
-    product: 'Śruba M8x40',
-    quantity: 500,
-    from: 'BUFOR-01',
-    to: 'R1-A-01',
-    user: 'Jan Kowalski',
-    document: 'PZ/2025/005',
-  },
-  {
-    id: 3,
-    date: '2025-06-18 15:10',
-    type: MovementType.MOVE,
-    product: 'Filtr powietrza FP-200',
-    quantity: 50,
-    from: 'R2-A-03',
-    to: 'R4-C-01',
-    user: 'Anna Nowak',
-    document: 'MM/2025/012',
-  },
-  {
-    id: 4,
-    date: '2025-06-18 15:30',
-    type: MovementType.PICK,
-    product: 'Olej hydrauliczny 5L',
-    quantity: 10,
-    from: 'R3-B-02',
-    to: 'WYDANIE',
-    user: 'Jan Kowalski',
-    document: 'RW/2025/008',
-  },
-  {
-    id: 5,
-    date: '2025-06-17 09:00',
-    type: MovementType.CORRECTION,
-    product: 'Smar łożyskowy 400g',
-    quantity: -5,
-    from: 'R4-B-03',
-    to: '-',
-    user: 'Maria Wiśniewska',
-    document: 'INW/2025/003',
-  },
-  {
-    id: 6,
-    date: '2025-06-17 10:20',
-    type: MovementType.RECEIVE,
-    product: 'Nakrętka M8',
-    quantity: 2000,
-    from: '-',
-    to: 'BUFOR-01',
-    user: 'Anna Nowak',
-    document: 'PZ/2025/004',
-  },
-  {
-    id: 7,
-    date: '2025-06-17 11:00',
-    type: MovementType.PUTAWAY,
-    product: 'Nakrętka M8',
-    quantity: 2000,
-    from: 'BUFOR-01',
-    to: 'R1-B-02',
-    user: 'Anna Nowak',
-    document: 'PZ/2025/004',
-  },
-  {
-    id: 8,
-    date: '2025-06-16 08:15',
-    type: MovementType.PICK,
-    product: 'Uszczelka gumowa 50mm',
-    quantity: 200,
-    from: 'R2-C-01',
-    to: 'WYDANIE',
-    user: 'Jan Kowalski',
-    document: 'RW/2025/007',
-  },
-];
+interface LedgerEntry {
+  id: number;
+  movement_type: string;
+  product_id: number;
+  from_location_id: number | null;
+  to_location_id: number | null;
+  quantity: number;
+  document_number: string | null;
+  user_id: number;
+  created_at: string;
+}
 
 const columns: GridColDef[] = [
-  { field: 'date', headerName: 'Data i czas', width: 160 },
   {
-    field: 'type',
+    field: 'created_at',
+    headerName: 'Data i czas',
+    width: 160,
+    valueFormatter: (value: string) => (value ? new Date(value).toLocaleString('pl-PL') : '—'),
+  },
+  {
+    field: 'movement_type',
     headerName: 'Typ operacji',
-    width: 150,
+    width: 180,
     renderCell: (params) => (
       <Chip
-        label={MOVEMENT_TYPE_LABELS[params.value as MovementType]}
+        label={MOVEMENT_TYPE_LABELS[params.value as MovementType] ?? params.value}
         size="small"
-        sx={{ bgcolor: TYPE_COLORS[params.value as MovementType], color: 'white', fontWeight: 600 }}
+        sx={{ bgcolor: TYPE_COLORS[params.value] ?? '#757575', color: 'white', fontWeight: 600 }}
       />
     ),
   },
-  { field: 'document', headerName: 'Dokument', width: 150 },
-  { field: 'product', headerName: 'Produkt', flex: 1, minWidth: 160 },
+  {
+    field: 'document_number',
+    headerName: 'Dokument',
+    width: 150,
+    valueFormatter: (value: string | null) => value ?? '—',
+  },
+  { field: 'product_id', headerName: 'Produkt ID', width: 110 },
   { field: 'quantity', headerName: 'Ilość', width: 100, type: 'number' },
-  { field: 'from', headerName: 'Z lokalizacji', width: 130 },
-  { field: 'to', headerName: 'Do lokalizacji', width: 130 },
-  { field: 'user', headerName: 'Użytkownik', width: 150 },
+  {
+    field: 'from_location_id',
+    headerName: 'Z lok. ID',
+    width: 100,
+    valueFormatter: (value: number | null) => value ?? '—',
+  },
+  {
+    field: 'to_location_id',
+    headerName: 'Do lok. ID',
+    width: 100,
+    valueFormatter: (value: number | null) => value ?? '—',
+  },
+  { field: 'user_id', headerName: 'User ID', width: 90 },
 ];
 
 const LedgerPage = () => {
   const [search, setSearch] = useState('');
+  const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const { showError } = useNotification();
 
-  const filtered = MOCK_LEDGER.filter(
-    (entry) =>
-      entry.product.toLowerCase().includes(search.toLowerCase()) ||
-      entry.document.toLowerCase().includes(search.toLowerCase()) ||
-      entry.user.toLowerCase().includes(search.toLowerCase()),
+  const fetchLedger = useCallback(async (searchVal: string) => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({ page: '1', page_size: '100' });
+      if (searchVal) params.append('search', searchVal);
+      const response = await apiClient.get(`/ledger?${params.toString()}`);
+      setEntries(response.data.items ?? []);
+      setTotal(response.data.total ?? 0);
+    } catch {
+      showError('Nie udało się pobrać rejestru ruchów.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLedger('');
+  }, [fetchLedger]);
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearch(value);
+      clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+      (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+        fetchLedger(value);
+      }, 400);
+    },
+    [fetchLedger],
   );
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
         Rejestr ruchów magazynowych
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Łącznie: {total}
       </Typography>
 
       <TextField
-        placeholder="Szukaj po produkcie, dokumencie lub użytkowniku..."
+        placeholder="Szukaj po numerze dokumentu..."
         size="small"
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => handleSearchChange(e.target.value)}
         sx={{ mb: 2, width: 420 }}
         slotProps={{
           input: {
@@ -158,18 +132,24 @@ const LedgerPage = () => {
         }}
       />
 
-      <DataGrid
-        rows={filtered}
-        columns={columns}
-        pageSizeOptions={[10, 25, 50]}
-        initialState={{
-          pagination: { paginationModel: { pageSize: 10 } },
-          sorting: { sortModel: [{ field: 'date', sort: 'desc' }] },
-        }}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={entries}
+          columns={columns}
+          pageSizeOptions={[10, 25, 50]}
+          initialState={{
+            pagination: { paginationModel: { pageSize: 25 } },
+            sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
+          }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
     </Box>
   );
 };

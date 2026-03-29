@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -16,189 +16,122 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
-import { Add, Search, Edit, Visibility, Close, Refresh } from '@mui/icons-material';
+import { Add, Search, Edit, Visibility, Close } from '@mui/icons-material';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
 import { productSchema, type ProductFormData } from '@/utils/validators';
 import FormField from '@/components/Form/FormField';
+import ScanButton from '@/components/Scanner/ScanButton';
+import { useExternalScanner } from '@/hooks/useExternalScanner';
 import FormModal from '@/components/Modal/FormModal';
-import apiClient from '@/api/client';
-
-interface Product {
-  id: number;
-  sku: string;
-  name: string;
-  unit: string;
-  stock?: number;
-}
-
-type ProductsListResponse = {
-  items: Product[];
-  total: number;
-  page: number;
-  page_size: number;
-  pages: number;
-};
-
-const MAX_PAGE_SIZE_BACKEND = 100;
-
-function toErrorMessage(err: any): string {
-  const detail = err?.response?.data?.detail;
-
-  if (typeof detail === 'string') return detail;
-
-  if (Array.isArray(detail)) {
-    const msgs = detail
-      .map((d) => (typeof d?.msg === 'string' ? d.msg : null))
-      .filter(Boolean) as string[];
-    if (msgs.length) return msgs.join(', ');
-  }
-
-  return err?.message || 'Wystąpił błąd.';
-}
+import { useProducts, type ProductItem } from '@/hooks/useProducts';
 
 const ProductsPage = () => {
-  const { canCreate } = usePermissions();
-  const { showSuccess, showError } = useNotification();
-
   const [search, setSearch] = useState('');
-  const [rows, setRows] = useState<Product[]>([]);
-  const [rowCount, setRowCount] = useState(0);
-
-  const [page, setPage] = useState(0); // DataGrid: 0-based
-  const [pageSize, setPageSize] = useState(10);
-
-  const [loading, setLoading] = useState(false);
-
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { canCreate } = usePermissions();
+  const { showError } = useNotification();
 
-  // ✅ ważne: defaultValues, żeby FormField/Controller nie dostał undefined
+  const { products, total, isLoading, createProduct, updateProduct } = useProducts({
+    search: debouncedSearch,
+    pageSize: 100,
+  });
+
   const createForm = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
-    defaultValues: { sku: '', name: '', unit: '' },
   });
 
   const editForm = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
-    defaultValues: { sku: '', name: '', unit: '' },
   });
 
-  // opcjonalnie: DEV StrictMode
-  const didInitialFetch = useRef(false);
-
-  const effectivePageSize = useMemo(
-    () => Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE_BACKEND),
-    [pageSize],
-  );
-
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const res = await apiClient.get<ProductsListResponse>('/products', {
-        params: {
-          page: page + 1, // backend: 1-based
-          page_size: effectivePageSize, // <= 100
-          search: search.trim() || undefined,
-        },
-      });
-
-      const data = res.data;
-      setRows(
-        (data.items || []).map((p) => ({
-          ...p,
-          stock: typeof p.stock === 'number' ? p.stock : 0,
-        })),
-      );
-      setRowCount(data.total ?? 0);
-    } catch (e: any) {
-      showError(toErrorMessage(e));
-      setRows([]);
-      setRowCount(0);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!didInitialFetch.current) {
-      didInitialFetch.current = true;
-      fetchProducts();
-      return;
-    }
-    fetchProducts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, effectivePageSize, search]);
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+    (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }, []);
 
   const handleCreate = async (data: ProductFormData) => {
+    setIsSubmitting(true);
     try {
-      await apiClient.post('/products', {
+      await createProduct({
         sku: data.sku,
+        ean: data.ean || undefined,
         name: data.name,
         unit: data.unit,
       });
-
-      showSuccess(`Produkt "${data.name}" został dodany.`);
       setCreateOpen(false);
-      createForm.reset({ sku: '', name: '', unit: '' });
-
-      setPage(0);
-      fetchProducts();
-    } catch (e: any) {
-      showError(toErrorMessage(e));
+      createForm.reset();
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się dodać produktu.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleEdit = async (data: ProductFormData) => {
     if (!selectedProduct) return;
-
+    setIsSubmitting(true);
     try {
-      await apiClient.patch(`/products/${selectedProduct.id}`, {
+      await updateProduct(selectedProduct.id, {
         sku: data.sku,
+        ean: data.ean || undefined,
         name: data.name,
         unit: data.unit,
+        version: selectedProduct.version,
       });
-
-      showSuccess(`Produkt "${data.name}" został zaktualizowany.`);
       setEditOpen(false);
       setSelectedProduct(null);
-
-      fetchProducts();
-    } catch (e: any) {
-      showError(toErrorMessage(e));
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zaktualizować produktu.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const openEdit = (product: Product) => {
+  const openEdit = (product: ProductItem) => {
     setSelectedProduct(product);
-    editForm.reset({ sku: product.sku, name: product.name, unit: product.unit });
+    editForm.reset({
+      sku: product.sku,
+      ean: product.ean ?? '',
+      name: product.name,
+      unit: product.unit,
+    });
     setEditOpen(true);
   };
 
-  const openDetail = (product: Product) => {
+  const openDetail = (product: ProductItem) => {
     setSelectedProduct(product);
     setDetailOpen(true);
   };
 
   const columns: GridColDef[] = [
     { field: 'sku', headerName: 'Kod SKU', width: 130 },
-    { field: 'name', headerName: 'Nazwa produktu', flex: 1, minWidth: 220 },
-    { field: 'unit', headerName: 'Jednostka', width: 110 },
+    { field: 'ean', headerName: 'EAN', width: 140 },
+    { field: 'name', headerName: 'Nazwa produktu', flex: 1, minWidth: 200 },
+    { field: 'unit', headerName: 'Jednostka', width: 100 },
     {
-      field: 'stock',
-      headerName: 'Stan łączny',
-      width: 130,
-      type: 'number',
+      field: 'is_active',
+      headerName: 'Status',
+      width: 110,
       renderCell: (params) => (
         <Chip
-          label={params.value ?? 0}
+          label={params.value ? 'Aktywny' : 'Nieaktywny'}
           size="small"
-          color={(params.value ?? 0) > 0 ? 'success' : 'error'}
+          color={params.value ? 'success' : 'error'}
           variant="outlined"
         />
       ),
@@ -216,7 +149,6 @@ const ProductsPage = () => {
               <Visibility fontSize="small" />
             </IconButton>
           </Tooltip>
-
           {canCreate('dictionaries') && (
             <Tooltip title="Edytuj">
               <IconButton size="small" onClick={() => openEdit(params.row)}>
@@ -229,108 +161,102 @@ const ProductsPage = () => {
     },
   ];
 
+  const handleScan = useCallback((code: string) => {
+    setSearch(code);
+    setDebouncedSearch(code);
+  }, []);
+
+  useExternalScanner({ onScan: handleScan });
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>
           Produkty
         </Typography>
-
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={loading ? <CircularProgress size={18} /> : <Refresh />}
-            onClick={fetchProducts}
-            disabled={loading}
-          >
-            Odśwież
+        {canCreate('dictionaries') && (
+          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+            Dodaj produkt
           </Button>
-
-          {canCreate('dictionaries') && (
-            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-              Dodaj produkt
-            </Button>
-          )}
-        </Box>
+        )}
       </Box>
 
-      <TextField
-        placeholder="Szukaj po nazwie lub SKU..."
-        size="small"
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setPage(0);
-        }}
-        sx={{ mb: 2, width: 350 }}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Łącznie: {total}
+      </Typography>
 
-      <DataGrid
-        rows={rows}
-        columns={columns}
-        loading={loading}
-        rowCount={rowCount}
-        paginationMode="server"
-        paginationModel={{ page, pageSize: effectivePageSize }}
-        onPaginationModelChange={(model) => {
-          setPage(model.page);
-          setPageSize(model.pageSize);
-        }}
-        pageSizeOptions={[10, 25, 50, 100]}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <TextField
+          placeholder="Szukaj po nazwie lub SKU..."
+          size="small"
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          sx={{ width: 350 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <ScanButton onScan={handleScan} title="Skanuj SKU produktu" />
+      </Box>
 
-      {/* ✅ Modal: Dodaj produkt (POPRAWIONE: name + control) */}
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={products}
+          columns={columns}
+          pageSizeOptions={[10, 25, 50]}
+          initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
+
       <FormModal
         open={createOpen}
         onClose={() => {
           setCreateOpen(false);
-          createForm.reset({ sku: '', name: '', unit: '' });
+          createForm.reset();
         }}
         onSubmit={createForm.handleSubmit(handleCreate)}
         title="Dodaj nowy produkt"
-        submitLabel="Dodaj"
+        isSubmitting={isSubmitting}
       >
         <FormField
-          name="sku"
-          control={createForm.control}
           label="Kod SKU"
           placeholder="np. SKU-009"
-          error={!!createForm.formState.errors.sku}
-          helperText={createForm.formState.errors.sku?.message}
+          error={createForm.formState.errors.sku}
+          {...createForm.register('sku')}
         />
-
         <FormField
-          name="name"
-          control={createForm.control}
+          label="Kod EAN"
+          placeholder="np. 5901234123457"
+          error={createForm.formState.errors.ean}
+          {...createForm.register('ean')}
+        />
+        <FormField
           label="Nazwa produktu"
           placeholder="np. Zawór kulowy DN25"
-          error={!!createForm.formState.errors.name}
-          helperText={createForm.formState.errors.name?.message}
+          error={createForm.formState.errors.name}
+          {...createForm.register('name')}
         />
-
         <FormField
-          name="unit"
-          control={createForm.control}
           label="Jednostka miary"
           placeholder="np. szt, kg, m"
-          error={!!createForm.formState.errors.unit}
-          helperText={createForm.formState.errors.unit?.message}
+          error={createForm.formState.errors.unit}
+          {...createForm.register('unit')}
         />
       </FormModal>
 
-      {/* ✅ Modal: Edytuj produkt (POPRAWIONE: name + control) */}
       <FormModal
         open={editOpen}
         onClose={() => {
@@ -339,34 +265,32 @@ const ProductsPage = () => {
         }}
         onSubmit={editForm.handleSubmit(handleEdit)}
         title={`Edytuj: ${selectedProduct?.name || ''}`}
-        submitLabel="Zapisz"
+        submitLabel="Zapisz zmiany"
+        isSubmitting={isSubmitting}
       >
         <FormField
-          name="sku"
-          control={editForm.control}
           label="Kod SKU"
-          error={!!editForm.formState.errors.sku}
-          helperText={editForm.formState.errors.sku?.message}
+          error={editForm.formState.errors.sku}
+          {...editForm.register('sku')}
         />
-
         <FormField
-          name="name"
-          control={editForm.control}
+          label="Kod EAN"
+          placeholder="np. 5901234123457"
+          error={editForm.formState.errors.ean}
+          {...editForm.register('ean')}
+        />
+        <FormField
           label="Nazwa produktu"
-          error={!!editForm.formState.errors.name}
-          helperText={editForm.formState.errors.name?.message}
+          error={editForm.formState.errors.name}
+          {...editForm.register('name')}
         />
-
         <FormField
-          name="unit"
-          control={editForm.control}
           label="Jednostka miary"
-          error={!!editForm.formState.errors.unit}
-          helperText={editForm.formState.errors.unit?.message}
+          error={editForm.formState.errors.unit}
+          {...editForm.register('unit')}
         />
       </FormModal>
 
-      {/* Dialog: Podgląd szczegółów */}
       <Dialog
         open={detailOpen}
         onClose={() => {
@@ -390,59 +314,39 @@ const ProductsPage = () => {
             <Close />
           </IconButton>
         </DialogTitle>
-
         <DialogContent>
           {selectedProduct && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Kod SKU
-                </Typography>
-                <Typography variant="body1" fontWeight={600}>
-                  {selectedProduct.sku}
-                </Typography>
-              </Box>
-              <Divider />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Nazwa
-                </Typography>
-                <Typography variant="body1" fontWeight={600}>
-                  {selectedProduct.name}
-                </Typography>
-              </Box>
-              <Divider />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Jednostka miary
-                </Typography>
-                <Typography variant="body1" fontWeight={600}>
-                  {selectedProduct.unit}
-                </Typography>
-              </Box>
-              <Divider />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Stan łączny
-                </Typography>
-                <Chip
-                  label={selectedProduct.stock ?? 0}
-                  color={(selectedProduct.stock ?? 0) > 0 ? 'success' : 'error'}
-                  variant="outlined"
-                />
-              </Box>
+              {[
+                { label: 'Kod SKU', value: selectedProduct.sku },
+                { label: 'Kod EAN', value: selectedProduct.ean ?? '—' },
+                { label: 'Nazwa', value: selectedProduct.name },
+                { label: 'Jednostka miary', value: selectedProduct.unit },
+                { label: 'Opis', value: selectedProduct.description ?? '—' },
+              ].map(({ label, value }) => (
+                <Box key={label}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {label}
+                    </Typography>
+                    <Typography variant="body1" fontWeight={600}>
+                      {value}
+                    </Typography>
+                  </Box>
+                  <Divider sx={{ mt: 1 }} />
+                </Box>
+              ))}
             </Box>
           )}
         </DialogContent>
-
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          {canCreate('dictionaries') && (
+          {canCreate('dictionaries') && selectedProduct && (
             <Button
               variant="contained"
               startIcon={<Edit />}
               onClick={() => {
                 setDetailOpen(false);
-                if (selectedProduct) openEdit(selectedProduct);
+                openEdit(selectedProduct);
               }}
             >
               Edytuj

@@ -1,10 +1,12 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { Role } from '@/constants/roles';
 
 interface User {
-  id: string;
+  id: number;
   login: string;
   email: string;
+  first_name: string;
+  last_name: string;
   role: Role;
 }
 
@@ -19,45 +21,104 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Dekoduje payload JWT bez weryfikacji podpisu (backend weryfikuje)
+const decodeTokenPayload = (token: string): Record<string, unknown> | null => {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+};
+
+// Sprawdza czy token wygasł (z buforem 10s)
+const isTokenExpired = (token: string): boolean => {
+  const payload = decodeTokenPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  return payload.exp * 1000 < Date.now() + 10_000;
+};
+
+const clearStorage = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user');
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(
-    localStorage.getItem('accessToken'),
-  );
-  const [refreshToken, setRefreshToken] = useState<string | null>(
-    localStorage.getItem('refreshToken'),
-  );
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
 
+  // Inicjalizacja — walidacja tokenów z localStorage przy starcie
   useEffect(() => {
+    const storedAccess = localStorage.getItem('accessToken');
+    const storedRefresh = localStorage.getItem('refreshToken');
     const storedUser = localStorage.getItem('user');
-    if (storedUser && accessToken) {
-      setUser(JSON.parse(storedUser));
+
+    if (!storedAccess || !storedUser) {
+      clearStorage();
+      return;
     }
+
+    if (isTokenExpired(storedAccess)) {
+      clearStorage();
+      return;
+    }
+
+    try {
+      setUser(JSON.parse(storedUser));
+      setAccessToken(storedAccess);
+      setRefreshToken(storedRefresh);
+    } catch {
+      clearStorage();
+    }
+  }, []);
+
+  // Auto-logout gdy token wygasa podczas aktywnej sesji
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const payload = decodeTokenPayload(accessToken);
+    if (!payload || typeof payload.exp !== 'number') return;
+
+    const msUntilExpiry = payload.exp * 1000 - Date.now();
+    if (msUntilExpiry <= 0) return;
+
+    const timer = setTimeout(() => {
+      logout();
+    }, msUntilExpiry);
+
+    return () => clearTimeout(timer);
   }, [accessToken]);
 
-  const login = (newAccessToken: string, newRefreshToken: string, newUser: User) => {
+  const login = useCallback((newAccessToken: string, newRefreshToken: string, newUser: User) => {
     setAccessToken(newAccessToken);
     setRefreshToken(newRefreshToken);
     setUser(newUser);
-
     localStorage.setItem('accessToken', newAccessToken);
     localStorage.setItem('refreshToken', newRefreshToken);
     localStorage.setItem('user', JSON.stringify(newUser));
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setAccessToken(null);
     setRefreshToken(null);
     setUser(null);
-
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('user');
-  };
+    clearStorage();
+  }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, accessToken, refreshToken, login, logout, isAuthenticated: !!accessToken }}
+      value={{
+        user,
+        accessToken,
+        refreshToken,
+        login,
+        logout,
+        isAuthenticated: !!accessToken,
+      }}
     >
       {children}
     </AuthContext.Provider>
@@ -66,8 +127,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
   return context;
 };

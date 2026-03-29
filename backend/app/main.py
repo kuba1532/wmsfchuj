@@ -1,16 +1,30 @@
+import logging
 from contextlib import asynccontextmanager
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.db.database import engine, SessionLocal, Base
+from app.db.database import SessionLocal
 from app.api.v1.router import api_router
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def seed_admin():
+def run_migrations() -> None:
+    try:
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Migracje bazy danych zakonczone pomyslnie.")
+    except Exception:
+        logger.exception("Blad podczas wykonywania migracji bazy danych.")
+        raise
+
+
+def seed_admin() -> None:
     from app.models.models import User, RoleEnum
     from app.core.security import hash_password, generate_login_code
 
@@ -30,12 +44,14 @@ def seed_admin():
             password_hash=hash_password(settings.ADMIN_PASSWORD),
             first_name="Admin",
             last_name="System",
-            role=RoleEnum.ADMINISTRATOR,
+            role=RoleEnum.ADMIN,
         )
         db.add(admin)
         db.commit()
+        logger.info("Konto administratora zostalo utworzone (login_code=%s).", login_code)
     except Exception:
         db.rollback()
+        logger.exception("Blad podczas tworzenia konta administratora.")
         raise
     finally:
         db.close()
@@ -43,8 +59,7 @@ def seed_admin():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if settings.DEBUG:
-        Base.metadata.create_all(bind=engine)
+    run_migrations()
     seed_admin()
     yield
 
@@ -71,4 +86,17 @@ app.include_router(api_router)
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": settings.APP_VERSION}
+    from sqlalchemy import text
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "version": settings.APP_VERSION,
+        "database": db_status,
+    }

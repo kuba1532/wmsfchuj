@@ -1,7 +1,10 @@
-import { useState } from 'react';
-import { Box, Typography, TextField, InputAdornment, Chip } from '@mui/material';
+import { useState, useCallback } from 'react';
+import { Box, Typography, TextField, InputAdornment, Chip, CircularProgress } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Search } from '@mui/icons-material';
+import { useState as useStateInner, useEffect, useCallback as useCallbackInner } from 'react';
+import apiClient from '@/api/client';
+import { useNotification } from '@/context/NotificationContext';
 
 const ACTION_COLORS: Record<string, string> = {
   LOGIN: '#1565C0',
@@ -9,119 +12,111 @@ const ACTION_COLORS: Record<string, string> = {
   UPDATE: '#FF8F00',
   DELETE: '#D32F2F',
   STATUS_CHANGE: '#7B1FA2',
+  CONFIRM: '#00838F',
+  APPROVE: '#4527A0',
+  GENERATE_TASKS: '#558B2F',
+  START: '#0277BD',
+  COMPLETE: '#2E7D32',
+  CANCEL: '#BF360C',
 };
 
-const MOCK_AUDIT = [
-  {
-    id: 1,
-    date: '2025-06-18 14:32:15',
-    user: 'Jan Kowalski (12345)',
-    action: 'CREATE',
-    entity: 'Dokument PZ',
-    details: 'Utworzono PZ/2025/005',
-  },
-  {
-    id: 2,
-    date: '2025-06-18 14:33:00',
-    user: 'Jan Kowalski (12345)',
-    action: 'STATUS_CHANGE',
-    entity: 'Dokument PZ',
-    details: 'PZ/2025/005: Roboczy → Zatwierdzony',
-  },
-  {
-    id: 3,
-    date: '2025-06-18 14:45:22',
-    user: 'Jan Kowalski (12345)',
-    action: 'CREATE',
-    entity: 'Ruch magazynowy',
-    details: 'Przyjęcie 500 szt SKU-001 na BUFOR-01',
-  },
-  {
-    id: 4,
-    date: '2025-06-18 15:10:05',
-    user: 'Anna Nowak (54321)',
-    action: 'UPDATE',
-    entity: 'Produkt',
-    details: 'SKU-004: zmiana nazwy',
-  },
-  {
-    id: 5,
-    date: '2025-06-18 15:30:18',
-    user: 'Maria Wiśniewska (11111)',
-    action: 'STATUS_CHANGE',
-    entity: 'Zapas',
-    details: 'SKU-004 R2-A-03: Dostępny → Zablokowany',
-  },
-  {
-    id: 6,
-    date: '2025-06-18 16:00:00',
-    user: 'Admin (00001)',
-    action: 'CREATE',
-    entity: 'Użytkownik',
-    details: 'Utworzono konto dla 99887',
-  },
-  {
-    id: 7,
-    date: '2025-06-18 08:01:12',
-    user: 'Jan Kowalski (12345)',
-    action: 'LOGIN',
-    entity: 'Sesja',
-    details: 'Zalogowano z IP 192.168.1.50',
-  },
-  {
-    id: 8,
-    date: '2025-06-17 17:55:00',
-    user: 'Anna Nowak (54321)',
-    action: 'DELETE',
-    entity: 'Lokalizacja',
-    details: 'Usunięto R5-A-01 (pusta)',
-  },
-];
+interface AuditEntry {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  details: string | null;
+  user_id: number | null;
+  created_at: string;
+}
 
 const columns: GridColDef[] = [
-  { field: 'date', headerName: 'Data i czas', width: 170 },
-  { field: 'user', headerName: 'Użytkownik', width: 200 },
+  {
+    field: 'created_at',
+    headerName: 'Data i czas',
+    width: 170,
+    valueFormatter: (value: string) => (value ? new Date(value).toLocaleString('pl-PL') : '—'),
+  },
+  { field: 'user_id', headerName: 'User ID', width: 90 },
   {
     field: 'action',
     headerName: 'Akcja',
-    width: 140,
+    width: 150,
     renderCell: (params) => (
       <Chip
         label={params.value}
         size="small"
         sx={{
-          bgcolor: ACTION_COLORS[params.value as string] || '#757575',
+          bgcolor: ACTION_COLORS[params.value as string] ?? '#757575',
           color: 'white',
           fontWeight: 600,
         }}
       />
     ),
   },
-  { field: 'entity', headerName: 'Obiekt', width: 160 },
-  { field: 'details', headerName: 'Szczegóły', flex: 1, minWidth: 250 },
+  { field: 'entity_type', headerName: 'Obiekt', width: 140 },
+  { field: 'entity_id', headerName: 'ID', width: 70 },
+  {
+    field: 'details',
+    headerName: 'Szczegóły',
+    flex: 1,
+    minWidth: 250,
+    valueFormatter: (value: unknown) =>
+      value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—'),
+  },
 ];
 
 const AuditLogPage = () => {
   const [search, setSearch] = useState('');
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const { showError } = useNotification();
 
-  const filtered = MOCK_AUDIT.filter(
-    (entry) =>
-      entry.user.toLowerCase().includes(search.toLowerCase()) ||
-      entry.details.toLowerCase().includes(search.toLowerCase()) ||
-      entry.entity.toLowerCase().includes(search.toLowerCase()),
+  const fetchAudit = useCallback(async (searchVal: string) => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams({ page: '1', page_size: '100' });
+      if (searchVal) params.append('search', searchVal);
+      const response = await apiClient.get(`/audit?${params.toString()}`);
+      setEntries(response.data.items ?? []);
+      setTotal(response.data.total ?? 0);
+    } catch {
+      showError('Nie udało się pobrać dziennika zdarzeń.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAudit('');
+  }, [fetchAudit]);
+
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearch(value);
+      clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+      (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+        fetchAudit(value);
+      }, 400);
+    },
+    [fetchAudit],
   );
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
         Dziennik zdarzeń (Audit Log)
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Łącznie: {total}
       </Typography>
 
       <TextField
-        placeholder="Szukaj po użytkowniku, obiekcie lub szczegółach..."
+        placeholder="Szukaj..."
         size="small"
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => handleSearchChange(e.target.value)}
         sx={{ mb: 2, width: 420 }}
         slotProps={{
           input: {
@@ -134,18 +129,24 @@ const AuditLogPage = () => {
         }}
       />
 
-      <DataGrid
-        rows={filtered}
-        columns={columns}
-        pageSizeOptions={[10, 25, 50]}
-        initialState={{
-          pagination: { paginationModel: { pageSize: 10 } },
-          sorting: { sortModel: [{ field: 'date', sort: 'desc' }] },
-        }}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={entries}
+          columns={columns}
+          pageSizeOptions={[10, 25, 50]}
+          initialState={{
+            pagination: { paginationModel: { pageSize: 25 } },
+            sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
+          }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
     </Box>
   );
 };

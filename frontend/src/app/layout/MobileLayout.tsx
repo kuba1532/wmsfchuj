@@ -45,6 +45,7 @@ import { useThemeMode } from '@/context/ThemeContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import useSessionTimeout from '@/hooks/useSessionTimeout';
 import SessionWarning from '@/components/Notifications/SessionWarning';
+import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import type { PermissionArea } from '@/constants/permissions';
 
 interface NavItem {
@@ -240,7 +241,9 @@ const MobileLayout = () => {
           boxSizing: 'border-box',
         }}
       >
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </Box>
 
       {/* Bottom Navigation – quick access */}

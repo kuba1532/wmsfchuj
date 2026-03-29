@@ -1,6 +1,6 @@
 export enum StockStatus {
-  AVAILABLE = 'DOSTEPNY',
-  BLOCKED = 'ZABLOKOWANY',
+  AVAILABLE = 'AVAILABLE',
+  BLOCKED = 'BLOCKED',
 }
 
 export const STOCK_STATUS_LABELS: Record<StockStatus, string> = {

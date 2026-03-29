@@ -30,17 +30,17 @@ settings = get_settings()
 
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
+    # Generyczny komunikat — nie ujawniamy czy konto istnieje
+    GENERIC_ERROR = "Nieprawidlowy login lub haslo."
+
     user = db.query(User).filter(User.login_code == data.login).first()
 
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nieprawidlowy login lub haslo.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
 
+    # Zablokowane konto — nie ujawniamy, zwracamy ten sam 401
     if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds())
-        raise HTTPException(
-            status_code=status.HTTP_423_LOCKED,
-            detail=f"Konto zablokowane. Sprobuj za {remaining // 60} min {remaining % 60} sek.",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
 
     if not verify_password(data.password, user.password_hash):
         user.failed_login_attempts += 1
@@ -50,15 +50,11 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             log_action(db, "ACCOUNT_LOCKED", "User", user.id, {"reason": "Exceeded login attempts"})
 
         db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
 
-        remaining_attempts = settings.MAX_LOGIN_ATTEMPTS - user.failed_login_attempts
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Nieprawidlowy login lub haslo. Pozostalo prob: {max(remaining_attempts, 0)}",
-        )
-
+    # Nieaktywne konto — ten sam 401
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Konto jest nieaktywne.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
 
     user.failed_login_attempts = 0
     user.locked_until = None
@@ -132,7 +128,7 @@ def unlock_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role != RoleEnum.ADMINISTRATOR:
+    if current_user.role != RoleEnum.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tylko administrator moze odblokowac konta.")
 
     user = db.query(User).filter(User.id == user_id).first()

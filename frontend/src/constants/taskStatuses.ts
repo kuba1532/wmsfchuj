@@ -1,9 +1,9 @@
 export enum TaskStatus {
-  NEW = 'NOWY',
-  ASSIGNED = 'PRZYPISANY',
-  IN_PROGRESS = 'W_REALIZACJI',
-  COMPLETED = 'ZAKONCZONY',
-  CANCELLED = 'ANULOWANY',
+  NEW = 'NEW',
+  ASSIGNED = 'ASSIGNED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {

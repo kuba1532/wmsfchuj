@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -8,8 +8,7 @@ import {
   Chip,
   IconButton,
   Tooltip,
-  FormControlLabel,
-  Checkbox,
+  CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Add, Search, Edit } from '@mui/icons-material';
@@ -22,17 +21,9 @@ import { locationSchema, type LocationFormData } from '@/utils/validators';
 import FormField from '@/components/Form/FormField';
 import FormSelect from '@/components/Form/FormSelect';
 import FormModal from '@/components/Modal/FormModal';
-
-interface Location {
-  id: number;
-  code: string;
-  type: LocationType;
-  row: string;
-  rack: string;
-  shelf: string;
-  occupied: boolean;
-  isBuffer: boolean;
-}
+import ScanButton from '@/components/Scanner/ScanButton';
+import { useExternalScanner } from '@/hooks/useExternalScanner';
+import { useLocations, type LocationItem } from '@/hooks/useLocations';
 
 const TYPE_COLORS: Record<LocationType, string> = {
   [LocationType.BUFFER]: '#FF8F00',
@@ -45,119 +36,20 @@ const LOCATION_TYPE_OPTIONS = Object.entries(LOCATION_TYPE_LABELS).map(([value, 
   label,
 }));
 
-const INITIAL_LOCATIONS: Location[] = [
-  {
-    id: 1,
-    code: 'BUFOR-01',
-    type: LocationType.BUFFER,
-    row: '-',
-    rack: '-',
-    shelf: '-',
-    occupied: true,
-    isBuffer: true,
-  },
-  {
-    id: 2,
-    code: 'R1-A-01',
-    type: LocationType.STORAGE,
-    row: 'R1',
-    rack: 'A',
-    shelf: '01',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 3,
-    code: 'R1-A-02',
-    type: LocationType.STORAGE,
-    row: 'R1',
-    rack: 'A',
-    shelf: '02',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 4,
-    code: 'R1-B-01',
-    type: LocationType.STORAGE,
-    row: 'R1',
-    rack: 'B',
-    shelf: '01',
-    occupied: false,
-    isBuffer: false,
-  },
-  {
-    id: 5,
-    code: 'R1-B-02',
-    type: LocationType.STORAGE,
-    row: 'R1',
-    rack: 'B',
-    shelf: '02',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 6,
-    code: 'R2-A-03',
-    type: LocationType.STORAGE,
-    row: 'R2',
-    rack: 'A',
-    shelf: '03',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 7,
-    code: 'R2-C-01',
-    type: LocationType.STORAGE,
-    row: 'R2',
-    rack: 'C',
-    shelf: '01',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 8,
-    code: 'R3-B-02',
-    type: LocationType.STORAGE,
-    row: 'R3',
-    rack: 'B',
-    shelf: '02',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 9,
-    code: 'R4-A-01',
-    type: LocationType.STORAGE,
-    row: 'R4',
-    rack: 'A',
-    shelf: '01',
-    occupied: true,
-    isBuffer: false,
-  },
-  {
-    id: 10,
-    code: 'R4-B-03',
-    type: LocationType.STORAGE,
-    row: 'R4',
-    rack: 'B',
-    shelf: '03',
-    occupied: true,
-    isBuffer: false,
-  },
-];
-
 const LocationsPage = () => {
   const [search, setSearch] = useState('');
-  const [locations, setLocations] = useState<Location[]>(INITIAL_LOCATIONS);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [isBufferCreate, setIsBufferCreate] = useState(false);
-  const [isBufferEdit, setIsBufferEdit] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<LocationItem | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { canCreate } = usePermissions();
-  const { showSuccess, showError } = useNotification();
+  const { showError } = useNotification();
+
+  const { locations, total, isLoading, createLocation, updateLocation } = useLocations({
+    search: debouncedSearch,
+    pageSize: 100,
+  });
 
   const createForm = useForm<LocationFormData>({
     resolver: zodResolver(locationSchema),
@@ -168,70 +60,72 @@ const LocationsPage = () => {
     resolver: zodResolver(locationSchema),
   });
 
-  const handleCreate = (data: LocationFormData) => {
-    const duplicate = locations.find((l) => l.code === data.code);
-    if (duplicate) {
-      showError(`Lokalizacja "${data.code}" już istnieje!`);
-      return;
+  // Debounce wyszukiwania — nie wysyłamy requestu przy każdym znaku
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+    (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }, []);
+
+  const handleCreate = async (data: LocationFormData) => {
+    setIsSubmitting(true);
+    try {
+      await createLocation({
+        code: data.code,
+        type: data.type,
+        row: data.row || undefined,
+        rack: data.rack || undefined,
+        shelf: data.shelf || undefined,
+      });
+      setCreateOpen(false);
+      createForm.reset();
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się dodać lokalizacji.');
+    } finally {
+      setIsSubmitting(false);
     }
-    const newLocation: Location = {
-      id: Math.max(...locations.map((l) => l.id)) + 1,
-      code: data.code,
-      type: data.type as LocationType,
-      row: data.row || '-',
-      rack: data.rack || '-',
-      shelf: data.shelf || '-',
-      occupied: false,
-      isBuffer: isBufferCreate,
-    };
-    setLocations([...locations, newLocation]);
-    setCreateOpen(false);
-    setIsBufferCreate(false);
-    createForm.reset();
-    showSuccess(
-      `Lokalizacja "${data.code}" została dodana.${isBufferCreate ? ' (Strefa przyjęć)' : ''}`,
-    );
   };
 
-  const handleEdit = (data: LocationFormData) => {
+  const handleEdit = async (data: LocationFormData) => {
     if (!selectedLocation) return;
-    const duplicate = locations.find((l) => l.code === data.code && l.id !== selectedLocation.id);
-    if (duplicate) {
-      showError(`Lokalizacja "${data.code}" już istnieje!`);
-      return;
+    setIsSubmitting(true);
+    try {
+      await updateLocation(selectedLocation.id, {
+        code: data.code,
+        type: data.type,
+        row: data.row || undefined,
+        rack: data.rack || undefined,
+        shelf: data.shelf || undefined,
+        version: selectedLocation.version,
+      });
+      setEditOpen(false);
+      setSelectedLocation(null);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zaktualizować lokalizacji.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setLocations(
-      locations.map((l) =>
-        l.id === selectedLocation.id
-          ? {
-              ...l,
-              code: data.code,
-              type: data.type as LocationType,
-              row: data.row || '-',
-              rack: data.rack || '-',
-              shelf: data.shelf || '-',
-              isBuffer: isBufferEdit,
-            }
-          : l,
-      ),
-    );
-    setEditOpen(false);
-    setSelectedLocation(null);
-    showSuccess(`Lokalizacja "${data.code}" została zaktualizowana.`);
   };
 
-  const openEdit = (location: Location) => {
+  const openEdit = (location: LocationItem) => {
     setSelectedLocation(location);
-    setIsBufferEdit(location.isBuffer);
     editForm.reset({
       code: location.code,
       type: location.type,
-      row: location.row === '-' ? '' : location.row,
-      rack: location.rack === '-' ? '' : location.rack,
-      shelf: location.shelf === '-' ? '' : location.shelf,
+      row: location.row ?? '',
+      rack: location.rack ?? '',
+      shelf: location.shelf ?? '',
     });
     setEditOpen(true);
   };
+
+  const bufferCount = locations.filter((l) => l.type === LocationType.BUFFER).length;
 
   const columns: GridColDef[] = [
     { field: 'code', headerName: 'Kod lokalizacji', width: 150 },
@@ -251,25 +145,18 @@ const LocationsPage = () => {
         />
       ),
     },
-    {
-      field: 'isBuffer',
-      headerName: 'Strefa przyjęć',
-      width: 120,
-      renderCell: (params) =>
-        params.value ? <Chip label="Bufor" size="small" color="warning" /> : null,
-    },
     { field: 'row', headerName: 'Rząd', width: 80 },
     { field: 'rack', headerName: 'Regał', width: 80 },
     { field: 'shelf', headerName: 'Półka', width: 80 },
     {
-      field: 'occupied',
-      headerName: 'Zajęta',
-      width: 100,
+      field: 'is_active',
+      headerName: 'Status',
+      width: 110,
       renderCell: (params) => (
         <Chip
-          label={params.value ? 'Tak' : 'Nie'}
+          label={params.value ? 'Aktywna' : 'Nieaktywna'}
           size="small"
-          color={params.value ? 'warning' : 'success'}
+          color={params.value ? 'success' : 'error'}
           variant="outlined"
         />
       ),
@@ -291,15 +178,7 @@ const LocationsPage = () => {
     },
   ];
 
-  const filtered = locations.filter((loc) => loc.code.toLowerCase().includes(search.toLowerCase()));
-
-  const bufferCount = locations.filter((l) => l.isBuffer).length;
-
-  const renderForm = (
-    form: typeof createForm,
-    isBuffer: boolean,
-    setIsBuffer: (v: boolean) => void,
-  ) => (
+  const renderForm = (form: typeof createForm) => (
     <>
       <FormField
         label="Kod lokalizacji"
@@ -339,18 +218,15 @@ const LocationsPage = () => {
           {...form.register('shelf')}
         />
       </Box>
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={isBuffer}
-            onChange={(e) => setIsBuffer(e.target.checked)}
-            color="warning"
-          />
-        }
-        label="Strefa przyjęć (buforowa) – punkt startowy dla rozmieszczania"
-      />
     </>
   );
+
+  const handleScan = useCallback((code: string) => {
+    setSearch(code);
+    setDebouncedSearch(code);
+  }, []);
+
+  useExternalScanner({ onScan: handleScan });
 
   return (
     <Box>
@@ -365,47 +241,56 @@ const LocationsPage = () => {
         )}
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Stref przyjęć (buforowych): {bufferCount}
+        Łącznie: {total} | Stref przyjęć (BUFFER): {bufferCount}
       </Typography>
 
-      <TextField
-        placeholder="Szukaj po kodzie lokalizacji..."
-        size="small"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        sx={{ mb: 2, width: 350 }}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <TextField
+          placeholder="Szukaj po kodzie lokalizacji..."
+          size="small"
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          sx={{ width: 350 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <ScanButton onScan={handleScan} title="Skanuj kod lokalizacji" />
+      </Box>
 
-      <DataGrid
-        rows={filtered}
-        columns={columns}
-        pageSizeOptions={[10, 25, 50]}
-        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={locations}
+          columns={columns}
+          pageSizeOptions={[10, 25, 50]}
+          initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
 
       <FormModal
         open={createOpen}
         onClose={() => {
           setCreateOpen(false);
-          setIsBufferCreate(false);
           createForm.reset();
         }}
         onSubmit={createForm.handleSubmit(handleCreate)}
         title="Dodaj nową lokalizację"
+        isSubmitting={isSubmitting}
       >
-        {renderForm(createForm, isBufferCreate, setIsBufferCreate)}
+        {renderForm(createForm)}
       </FormModal>
 
       <FormModal
@@ -417,8 +302,9 @@ const LocationsPage = () => {
         onSubmit={editForm.handleSubmit(handleEdit)}
         title={`Edytuj: ${selectedLocation?.code || ''}`}
         submitLabel="Zapisz zmiany"
+        isSubmitting={isSubmitting}
       >
-        {renderForm(editForm, isBufferEdit, setIsBufferEdit)}
+        {renderForm(editForm)}
       </FormModal>
     </Box>
   );

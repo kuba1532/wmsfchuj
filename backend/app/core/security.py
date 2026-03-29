@@ -1,13 +1,10 @@
-import random
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from app.core.config import get_settings
-
-settings = get_settings()
 
 pwd_context = CryptContext(
     schemes=["bcrypt"],
@@ -35,20 +32,16 @@ def create_access_token(
     data: dict,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
-    to_encode = data.copy()
+    from app.core.config import get_settings
+    settings = get_settings()
 
+    to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta
         if expires_delta
         else timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-
-    to_encode.update(
-        {
-            "exp": expire,
-            "type": "access",
-        }
-    )
+    to_encode.update({"exp": expire, "type": "access"})
 
     return jwt.encode(
         to_encode,
@@ -58,18 +51,14 @@ def create_access_token(
 
 
 def create_refresh_token(data: dict) -> str:
-    to_encode = data.copy()
+    from app.core.config import get_settings
+    settings = get_settings()
 
+    to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(
         days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
     )
-
-    to_encode.update(
-        {
-            "exp": expire,
-            "type": "refresh",
-        }
-    )
+    to_encode.update({"exp": expire, "type": "refresh"})
 
     return jwt.encode(
         to_encode,
@@ -79,6 +68,9 @@ def create_refresh_token(data: dict) -> str:
 
 
 def decode_token(token: str) -> Optional[dict]:
+    from app.core.config import get_settings
+    settings = get_settings()
+
     try:
         payload = jwt.decode(
             token,
@@ -97,13 +89,10 @@ def decode_token(token: str) -> Optional[dict]:
 def validate_password_policy(password: str) -> tuple[bool, str]:
     if len(password) < 8:
         return False, "Haslo musi miec co najmniej 8 znakow."
-
     if not any(c.isalpha() for c in password):
         return False, "Haslo musi zawierac co najmniej jedna litere."
-
     if not any(c.isdigit() for c in password):
         return False, "Haslo musi zawierac co najmniej jedna cyfre."
-
     return True, ""
 
 
@@ -113,6 +102,6 @@ def validate_password_policy(password: str) -> tuple[bool, str]:
 
 def generate_login_code(existing_codes: set[str]) -> str:
     while True:
-        code = f"{random.randint(0, 99999):05d}"
+        code = f"{secrets.randbelow(100000):05d}"
         if code not in existing_codes:
             return code

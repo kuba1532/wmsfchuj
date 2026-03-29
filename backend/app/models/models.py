@@ -9,7 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Float,
+    Numeric,
     UniqueConstraint,
     Index,
 )
@@ -20,10 +20,10 @@ from app.db.database import Base
 
 
 class RoleEnum(str, enum.Enum):
-    ADMINISTRATOR = "ADMINISTRATOR"
-    KIEROWNIK = "KIEROWNIK"
-    BRYGADZISTA = "BRYGADZISTA"
-    MAGAZYNIER = "MAGAZYNIER"
+    ADMIN = "ADMIN"
+    MANAGER = "MANAGER"
+    FOREMAN = "FOREMAN"
+    WORKER = "WORKER"
 
 
 class DocumentStatusEnum(str, enum.Enum):
@@ -88,7 +88,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
-    role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.MAGAZYNIER)
+    role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.WORKER)
     is_active = Column(Boolean, default=True, nullable=False)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)
@@ -109,6 +109,7 @@ class Product(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     sku = Column(String(50), unique=True, nullable=False, index=True)
+    ean = Column(String(13), unique=True, nullable=True, index=True)
     name = Column(String(255), nullable=False)
     unit = Column(String(20), nullable=False, default="szt")
     description = Column(Text, nullable=True)
@@ -125,8 +126,8 @@ class Location(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(50), unique=True, nullable=False, index=True)
+    # is_buffer usunięty — używaj type == LocationTypeEnum.BUFFER
     type = Column(Enum(LocationTypeEnum), nullable=False, default=LocationTypeEnum.STORAGE)
-    is_buffer = Column(Boolean, default=False, nullable=False)
     row = Column(String(10), nullable=True)
     rack = Column(String(10), nullable=True)
     shelf = Column(String(10), nullable=True)
@@ -144,8 +145,9 @@ class Stock(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
-    quantity = Column(Float, nullable=False, default=0)
+    quantity = Column(Numeric(10, 3), nullable=False, default=0)
     status = Column(Enum(StockStatusEnum), nullable=False, default=StockStatusEnum.AVAILABLE)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     version = Column(Integer, default=1, nullable=False)
 
@@ -186,7 +188,7 @@ class DocumentItem(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    quantity = Column(Float, nullable=False)
+    quantity = Column(Numeric(10, 3), nullable=False)
 
     document = relationship("Document", back_populates="items")
     product = relationship("Product")
@@ -201,7 +203,7 @@ class Task(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     from_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     to_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
-    quantity = Column(Float, nullable=False, default=0)
+    quantity = Column(Numeric(10, 3), nullable=False, default=0)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -243,9 +245,9 @@ class InventoryItem(Base):
     inventory_id = Column(Integer, ForeignKey("inventories.id", ondelete="CASCADE"), nullable=False)
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
-    system_quantity = Column(Float, nullable=False)
-    actual_quantity = Column(Float, nullable=False)
-    difference = Column(Float, nullable=False)
+    system_quantity = Column(Numeric(10, 3), nullable=False)
+    actual_quantity = Column(Numeric(10, 3), nullable=False)
+    difference = Column(Numeric(10, 3), nullable=False)
 
     inventory = relationship("Inventory", back_populates="items")
     location = relationship("Location")
@@ -260,7 +262,7 @@ class StockLedger(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     from_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     to_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
-    quantity = Column(Float, nullable=False)
+    quantity = Column(Numeric(10, 3), nullable=False)
     document_number = Column(String(50), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

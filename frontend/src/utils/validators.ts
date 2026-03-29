@@ -13,12 +13,18 @@ export const productSchema = z.object({
   sku: z
     .string()
     .min(1, 'Kod SKU jest wymagany')
-    .regex(/^SKU-\d{3,}$/, 'Format: SKU-XXX (np. SKU-001)'),
+    .max(50, 'Kod SKU może mieć maksymalnie 50 znaków'),
+  ean: z
+    .string()
+    .regex(/^\d{8,13}$/, 'EAN musi mieć 8-13 cyfr')
+    .optional()
+    .or(z.literal('')),
   name: z
     .string()
     .min(2, 'Nazwa musi mieć minimum 2 znaki')
     .max(100, 'Nazwa może mieć maksymalnie 100 znaków'),
   unit: z.string().min(1, 'Jednostka miary jest wymagana'),
+  description: z.string().max(500).optional().or(z.literal('')),
 });
 
 export const locationSchema = z.object({
@@ -38,24 +44,29 @@ export const documentPZSchema = z.object({
     .array(
       z.object({
         productId: z.number().min(1, 'Wybierz produkt'),
-        quantity: z.number().min(1, 'Ilość musi być większa od 0'),
+        quantity: z.number().min(0.001, 'Ilość musi być większa od 0'),
       }),
     )
     .min(1, 'Dokument musi zawierać co najmniej jedną pozycję'),
 });
 
-export const documentMMSchema = z.object({
-  fromLocation: z.string().min(1, 'Lokalizacja źródłowa jest wymagana'),
-  toLocation: z.string().min(1, 'Lokalizacja docelowa jest wymagana'),
-  items: z
-    .array(
-      z.object({
-        productId: z.number().min(1, 'Wybierz produkt'),
-        quantity: z.number().min(1, 'Ilość musi być większa od 0'),
-      }),
-    )
-    .min(1, 'Dokument musi zawierać co najmniej jedną pozycję'),
-});
+export const documentMMSchema = z
+  .object({
+    fromLocation: z.string().min(1, 'Lokalizacja źródłowa jest wymagana'),
+    toLocation: z.string().min(1, 'Lokalizacja docelowa jest wymagana'),
+    items: z
+      .array(
+        z.object({
+          productId: z.number().min(1, 'Wybierz produkt'),
+          quantity: z.number().min(0.001, 'Ilość musi być większa od 0'),
+        }),
+      )
+      .min(1, 'Dokument musi zawierać co najmniej jedną pozycję'),
+  })
+  .refine((d) => d.fromLocation !== d.toLocation, {
+    message: 'Lokalizacja źródłowa i docelowa muszą być różne',
+    path: ['toLocation'],
+  });
 
 export const documentRWSchema = z.object({
   recipient: z.string().min(2, 'Odbiorca jest wymagany'),
@@ -63,7 +74,7 @@ export const documentRWSchema = z.object({
     .array(
       z.object({
         productId: z.number().min(1, 'Wybierz produkt'),
-        quantity: z.number().min(1, 'Ilość musi być większa od 0'),
+        quantity: z.number().min(0.001, 'Ilość musi być większa od 0'),
       }),
     )
     .min(1, 'Dokument musi zawierać co najmniej jedną pozycję'),
@@ -75,14 +86,26 @@ export const taskSchema = z.object({
   productId: z.number().min(1, 'Wybierz produkt'),
   fromLocation: z.string().min(1, 'Lokalizacja źródłowa jest wymagana'),
   toLocation: z.string().optional().or(z.literal('')),
-  quantity: z.number().min(1, 'Ilość musi być większa od 0'),
+  quantity: z.number().min(0.001, 'Ilość musi być większa od 0'),
 });
 
+// userSchema bez pola password — dla edycji
 export const userSchema = z.object({
   email: z.string().email('Podaj prawidłowy adres email'),
   firstName: z.string().min(2, 'Imię jest wymagane'),
   lastName: z.string().min(2, 'Nazwisko jest wymagane'),
   role: z.string().min(1, 'Rola jest wymagana'),
+  // Pole opcjonalne — wymagane tylko przy tworzeniu (walidacja w userCreateSchema)
+  password: z.string().optional(),
+});
+
+// Osobny schema do tworzenia użytkownika z obowiązkowym hasłem
+export const userCreateSchema = userSchema.extend({
+  password: z
+    .string()
+    .min(8, 'Hasło musi mieć minimum 8 znaków')
+    .regex(/[a-zA-Z]/, 'Hasło musi zawierać co najmniej jedną literę')
+    .regex(/\d/, 'Hasło musi zawierać co najmniej jedną cyfrę'),
 });
 
 export const changePasswordSchema = z
@@ -108,4 +131,5 @@ export type DocumentMMFormData = z.infer<typeof documentMMSchema>;
 export type DocumentRWFormData = z.infer<typeof documentRWSchema>;
 export type TaskFormData = z.infer<typeof taskSchema>;
 export type UserFormData = z.infer<typeof userSchema>;
+export type UserCreateFormData = z.infer<typeof userCreateSchema>;
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;

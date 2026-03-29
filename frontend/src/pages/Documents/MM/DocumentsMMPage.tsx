@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Add, Search, Delete, Visibility, Close, Download } from '@mui/icons-material';
@@ -27,86 +28,38 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
 import { documentMMSchema, type DocumentMMFormData } from '@/utils/validators';
 import FormModal from '@/components/Modal/FormModal';
+import ScanButton from '@/components/Scanner/ScanButton';
+import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
+import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
+import apiClient from '@/api/client';
 
-const MOCK_PRODUCTS = [
-  { id: 1, sku: 'SKU-001', name: 'Śruba M8x40' },
-  { id: 2, sku: 'SKU-002', name: 'Nakrętka M8' },
-  { id: 3, sku: 'SKU-003', name: 'Olej hydrauliczny 5L' },
-  { id: 4, sku: 'SKU-004', name: 'Filtr powietrza FP-200' },
-  { id: 5, sku: 'SKU-005', name: 'Uszczelka gumowa 50mm' },
-];
-
-const MOCK_LOCATIONS = [
-  'R1-A-01',
-  'R1-A-02',
-  'R1-B-01',
-  'R1-B-02',
-  'R2-A-03',
-  'R2-C-01',
-  'R3-B-02',
-  'R4-A-01',
-  'R4-B-03',
-  'BUFOR-01',
-];
-
-interface MMDocument {
+interface ProductOption {
   id: number;
-  number: string;
-  date: string;
-  fromLocation: string;
-  toLocation: string;
-  items: { productId: number; productName: string; quantity: number }[];
-  status: DocumentStatus;
+  sku: string;
+  name: string;
 }
-
-const INITIAL_MM: MMDocument[] = [
-  {
-    id: 1,
-    number: 'MM/2025/001',
-    date: '2025-06-14',
-    fromLocation: 'R1-A-01',
-    toLocation: 'R3-B-02',
-    items: [{ productId: 1, productName: 'Śruba M8x40', quantity: 200 }],
-    status: DocumentStatus.COMPLETED,
-  },
-  {
-    id: 2,
-    number: 'MM/2025/002',
-    date: '2025-06-15',
-    fromLocation: 'R2-A-03',
-    toLocation: 'R4-C-01',
-    items: [{ productId: 4, productName: 'Filtr powietrza FP-200', quantity: 50 }],
-    status: DocumentStatus.IN_PROGRESS,
-  },
-  {
-    id: 3,
-    number: 'MM/2025/003',
-    date: '2025-06-16',
-    fromLocation: 'R4-B-03',
-    toLocation: 'R1-B-01',
-    items: [{ productId: 3, productName: 'Olej hydrauliczny 5L', quantity: 30 }],
-    status: DocumentStatus.DRAFT,
-  },
-  {
-    id: 4,
-    number: 'MM/2025/004',
-    date: '2025-06-17',
-    fromLocation: 'BUFOR-01',
-    toLocation: 'R2-C-01',
-    items: [{ productId: 5, productName: 'Uszczelka gumowa 50mm', quantity: 500 }],
-    status: DocumentStatus.CONFIRMED,
-  },
-];
+interface LocationOption {
+  id: number;
+  code: string;
+}
 
 const DocumentsMMPage = () => {
   const [search, setSearch] = useState('');
-  const [documents, setDocuments] = useState<MMDocument[]>(INITIAL_MM);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [selectedDoc, setSelectedDoc] = useState<MMDocument | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { canCreate } = usePermissions();
-  const { showSuccess } = useNotification();
+  const { showError } = useNotification();
+
+  const { documents, total, isLoading, createMM, confirmDocument, generateTasks } = useDocuments({
+    docType: 'MM',
+    search: debouncedSearch,
+  });
 
   const {
     register,
@@ -116,50 +69,101 @@ const DocumentsMMPage = () => {
     formState: { errors },
   } = useForm<DocumentMMFormData>({
     resolver: zodResolver(documentMMSchema),
-    defaultValues: {
-      fromLocation: '',
-      toLocation: '',
-      items: [{ productId: 0, quantity: 1 }],
-    },
+    defaultValues: { fromLocation: '', toLocation: '', items: [{ productId: 0, quantity: 1 }] },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
-  const handleCreate = (data: DocumentMMFormData) => {
-    const nextNum = documents.length + 1;
-    const newDoc: MMDocument = {
-      id: nextNum,
-      number: `MM/2025/${String(nextNum).padStart(3, '0')}`,
-      date: new Date().toISOString().split('T')[0],
-      fromLocation: data.fromLocation,
-      toLocation: data.toLocation,
-      items: data.items.map((item) => {
-        const product = MOCK_PRODUCTS.find((p) => p.id === item.productId);
-        return {
-          productId: item.productId,
-          productName: product?.name || 'Nieznany',
-          quantity: item.quantity,
-        };
-      }),
-      status: DocumentStatus.DRAFT,
-    };
-    setDocuments([...documents, newDoc]);
-    setCreateOpen(false);
-    reset({ fromLocation: '', toLocation: '', items: [{ productId: 0, quantity: 1 }] });
-    showSuccess(`Dokument ${newDoc.number} został utworzony.`);
+  useEffect(() => {
+    if (!createOpen) return;
+    Promise.all([
+      apiClient.get('/products?page=1&page_size=100'),
+      apiClient.get('/locations?page=1&page_size=100'),
+    ])
+      .then(([pRes, lRes]) => {
+        setProducts(pRes.data.items ?? []);
+        setLocations(lRes.data.items ?? []);
+      })
+      .catch(() => showError('Nie udało się pobrać słowników.'));
+  }, [createOpen]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    clearTimeout((handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer);
+    (handleSearchChange as { timer?: ReturnType<typeof setTimeout> }).timer = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 400);
+  }, []);
+
+  const handleCreate = async (data: DocumentMMFormData) => {
+    setIsSubmitting(true);
+    try {
+      const fromLoc = locations.find((l) => l.code === data.fromLocation);
+      const toLoc = locations.find((l) => l.code === data.toLocation);
+      if (!fromLoc || !toLoc) {
+        showError('Nieprawidłowa lokalizacja.');
+        return;
+      }
+      await createMM({
+        from_location_id: fromLoc.id,
+        to_location_id: toLoc.id,
+        items: data.items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
+      });
+      setCreateOpen(false);
+      reset({ fromLocation: '', toLocation: '', items: [{ productId: 0, quantity: 1 }] });
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się utworzyć dokumentu.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirm = async (id: number) => {
+    try {
+      await confirmDocument(id);
+      setDetailOpen(false);
+      setSelectedDoc(null);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zatwierdzić dokumentu.');
+    }
+  };
+
+  const handleGenerateTasks = async (id: number) => {
+    try {
+      await generateTasks(id);
+      setDetailOpen(false);
+      setSelectedDoc(null);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się wygenerować zadań.');
+    }
   };
 
   const columns: GridColDef[] = [
     { field: 'number', headerName: 'Numer dokumentu', width: 170 },
-    { field: 'date', headerName: 'Data', width: 120 },
-    { field: 'fromLocation', headerName: 'Z lokalizacji', width: 130 },
-    { field: 'toLocation', headerName: 'Do lokalizacji', width: 130 },
     {
-      field: 'items',
-      headerName: 'Pozycje',
-      width: 90,
-      type: 'number',
-      valueGetter: (_value: unknown, row: MMDocument) => row.items.length,
+      field: 'created_at',
+      headerName: 'Data',
+      width: 120,
+      valueFormatter: (value: string) =>
+        value ? new Date(value).toLocaleDateString('pl-PL') : '—',
+    },
+    {
+      field: 'from_location_id',
+      headerName: 'Z lokalizacji',
+      width: 130,
+      valueFormatter: (value: number | null) => (value ? `#${value}` : '—'),
+    },
+    {
+      field: 'to_location_id',
+      headerName: 'Do lokalizacji',
+      width: 130,
+      valueFormatter: (value: number | null) => (value ? `#${value}` : '—'),
     },
     {
       field: 'status',
@@ -198,9 +202,12 @@ const DocumentsMMPage = () => {
     },
   ];
 
-  const filtered = documents.filter((doc) =>
-    doc.number.toLowerCase().includes(search.toLowerCase()),
-  );
+  const handleScan = useCallback((code: string) => {
+    setSearch(code);
+    setDebouncedSearch(code);
+  }, []);
+
+  useExternalScanner({ onScan: handleScan });
 
   return (
     <Box>
@@ -215,32 +222,45 @@ const DocumentsMMPage = () => {
         )}
       </Box>
 
-      <TextField
-        placeholder="Szukaj po numerze..."
-        size="small"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        sx={{ mb: 2, width: 350 }}
-        slotProps={{
-          input: {
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-          },
-        }}
-      />
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Łącznie: {total}
+      </Typography>
 
-      <DataGrid
-        rows={filtered}
-        columns={columns}
-        pageSizeOptions={[10, 25]}
-        initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
-        disableRowSelectionOnClick
-        autoHeight
-        sx={{ borderRadius: 2 }}
-      />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <TextField
+          placeholder="Szukaj po numerze..."
+          size="small"
+          value={search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          sx={{ width: 350 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <ScanButton onScan={handleScan} title="Skanuj kod dokumentu" />
+      </Box>
+
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <DataGrid
+          rows={documents}
+          columns={columns}
+          pageSizeOptions={[10, 25]}
+          initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+          disableRowSelectionOnClick
+          autoHeight
+          sx={{ borderRadius: 2 }}
+        />
+      )}
 
       <FormModal
         open={createOpen}
@@ -252,6 +272,7 @@ const DocumentsMMPage = () => {
         title="Nowe przesunięcie (MM)"
         maxWidth="md"
         submitLabel="Utwórz dokument"
+        isSubmitting={isSubmitting}
       >
         <Box sx={{ display: 'flex', gap: 2 }}>
           <TextField
@@ -265,9 +286,9 @@ const DocumentsMMPage = () => {
             slotProps={{ select: { native: true } }}
           >
             <option value="">-- Wybierz --</option>
-            {MOCK_LOCATIONS.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc}
+            {locations.map((l) => (
+              <option key={l.id} value={l.code}>
+                {l.code}
               </option>
             ))}
           </TextField>
@@ -282,9 +303,9 @@ const DocumentsMMPage = () => {
             slotProps={{ select: { native: true } }}
           >
             <option value="">-- Wybierz --</option>
-            {MOCK_LOCATIONS.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc}
+            {locations.map((l) => (
+              <option key={l.id} value={l.code}>
+                {l.code}
               </option>
             ))}
           </TextField>
@@ -309,7 +330,7 @@ const DocumentsMMPage = () => {
               slotProps={{ select: { native: true } }}
             >
               <option value="">-- Wybierz --</option>
-              {MOCK_PRODUCTS.map((p) => (
+              {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.sku} – {p.name}
                 </option>
@@ -371,24 +392,21 @@ const DocumentsMMPage = () => {
         <DialogContent>
           {selectedDoc && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Data
-                </Typography>
-                <Typography fontWeight={600}>{selectedDoc.date}</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Z lokalizacji
-                </Typography>
-                <Typography fontWeight={600}>{selectedDoc.fromLocation}</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Do lokalizacji
-                </Typography>
-                <Typography fontWeight={600}>{selectedDoc.toLocation}</Typography>
-              </Box>
+              {[
+                {
+                  label: 'Data',
+                  value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
+                },
+                { label: 'Z lokalizacji (ID)', value: selectedDoc.from_location_id ?? '—' },
+                { label: 'Do lokalizacji (ID)', value: selectedDoc.to_location_id ?? '—' },
+              ].map(({ label, value }) => (
+                <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {label}
+                  </Typography>
+                  <Typography fontWeight={600}>{String(value)}</Typography>
+                </Box>
+              ))}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
                   Status
@@ -403,45 +421,24 @@ const DocumentsMMPage = () => {
                   }}
                 />
               </Box>
-              <Divider />
-              <Typography variant="subtitle2" fontWeight={600}>
-                Pozycje
-              </Typography>
-              {selectedDoc.items.map((item, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    bgcolor: 'action.hover',
-                    p: 1.5,
-                    borderRadius: 2,
-                  }}
-                >
-                  <Typography variant="body2">{item.productName}</Typography>
-                  <Typography variant="body2" fontWeight={600}>
-                    {item.quantity} szt
-                  </Typography>
-                </Box>
-              ))}
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
+          {selectedDoc?.status === DocumentStatus.DRAFT && (
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={() => handleConfirm(selectedDoc.id)}
+            >
+              Zatwierdź
+            </Button>
+          )}
           {selectedDoc?.status === DocumentStatus.CONFIRMED && (
             <Button
               variant="contained"
               color="success"
-              onClick={() => {
-                setDocuments(
-                  documents.map((d) =>
-                    d.id === selectedDoc.id ? { ...d, status: DocumentStatus.IN_PROGRESS } : d,
-                  ),
-                );
-                setDetailOpen(false);
-                setSelectedDoc(null);
-                showSuccess(`Zadania przesunięcia dla ${selectedDoc.number} zostały wygenerowane.`);
-              }}
+              onClick={() => handleGenerateTasks(selectedDoc.id)}
             >
               Generuj zadania
             </Button>
@@ -454,19 +451,16 @@ const DocumentsMMPage = () => {
               generateDocumentPDF({
                 type: 'MM',
                 number: selectedDoc.number,
-                date: selectedDoc.date,
+                date: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
                 header: [
-                  { label: 'Data', value: selectedDoc.date },
-                  { label: 'Z lokalizacji', value: selectedDoc.fromLocation },
-                  { label: 'Do lokalizacji', value: selectedDoc.toLocation },
+                  {
+                    label: 'Data',
+                    value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
+                  },
                 ],
-                items: selectedDoc.items.map((i) => ({
-                  product: i.productName,
-                  quantity: i.quantity,
-                })),
+                items: [],
                 status: DOCUMENT_STATUS_LABELS[selectedDoc.status],
               });
-              showSuccess('PDF został wygenerowany.');
             }}
           >
             Pobierz PDF

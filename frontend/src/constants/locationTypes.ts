@@ -1,7 +1,7 @@
 export enum LocationType {
-  BUFFER = 'STREFA_PRZYJEC',
-  STORAGE = 'SKLADOWANIE',
-  PICKING_ZONE = 'STREFA_KOMPLETACJI',
+  BUFFER = 'BUFFER',
+  STORAGE = 'STORAGE',
+  PICKING_ZONE = 'PICKING_ZONE',
 }
 
 export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {

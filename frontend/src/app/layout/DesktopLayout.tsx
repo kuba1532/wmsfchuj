@@ -4,6 +4,7 @@ import { Logout, DarkMode, LightMode } from '@mui/icons-material';
 import { Outlet, useNavigate } from 'react-router';
 import Sidebar, { DRAWER_WIDTH } from '@/components/Sidebar/Sidebar';
 import SessionWarning from '@/components/Notifications/SessionWarning';
+import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import { useAuth } from '@/context/AuthContext';
 import { useThemeMode } from '@/context/ThemeContext';
 import useSessionTimeout from '@/hooks/useSessionTimeout';
@@ -87,7 +88,9 @@ const DesktopLayout = () => {
             bgcolor: 'background.default',
           }}
         >
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </Box>
       </Box>
 

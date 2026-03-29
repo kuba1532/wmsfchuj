@@ -37,9 +37,10 @@ export interface UserResponse {
   email: string;
   first_name: string;
   last_name: string;
-  role: 'ADMINISTRATOR' | 'KIEROWNIK' | 'BRYGADZISTA' | 'MAGAZYNIER';
+  role: 'ADMIN' | 'MANAGER' | 'FOREMAN' | 'WORKER';
   is_active: boolean;
   created_at: string;
+  version: number;
 }
 
 export interface UserCreate {
@@ -56,6 +57,7 @@ export interface UserUpdate {
   last_name?: string;
   role?: string;
   is_active?: boolean;
+  version: number;
 }
 
 // -- Product --
@@ -63,15 +65,18 @@ export interface UserUpdate {
 export interface ProductResponse {
   id: number;
   sku: string;
+  ean: string | null;
   name: string;
   unit: string;
   description: string | null;
   is_active: boolean;
   created_at: string;
+  version: number;
 }
 
 export interface ProductCreate {
   sku: string;
+  ean?: string;
   name: string;
   unit?: string;
   description?: string;
@@ -79,9 +84,11 @@ export interface ProductCreate {
 
 export interface ProductUpdate {
   name?: string;
+  ean?: string;
   unit?: string;
   description?: string;
   is_active?: boolean;
+  version: number;
 }
 
 // -- Location --
@@ -90,18 +97,17 @@ export interface LocationResponse {
   id: number;
   code: string;
   type: 'BUFFER' | 'STORAGE' | 'PICKING_ZONE';
-  is_buffer: boolean;
   row: string | null;
   rack: string | null;
   shelf: string | null;
   is_active: boolean;
   created_at: string;
+  version: number;
 }
 
 export interface LocationCreate {
   code: string;
   type: string;
-  is_buffer?: boolean;
   row?: string;
   rack?: string;
   shelf?: string;
@@ -110,11 +116,11 @@ export interface LocationCreate {
 export interface LocationUpdate {
   code?: string;
   type?: string;
-  is_buffer?: boolean;
   row?: string;
   rack?: string;
   shelf?: string;
   is_active?: boolean;
+  version: number;
 }
 
 // -- Stock --

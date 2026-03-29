@@ -9,7 +9,7 @@ from app.schemas.schemas import AuditLogResponse, PaginatedResponse
 router = APIRouter(tags=["Audit & Reports"])
 
 
-@router.get("/audit-log", response_model=PaginatedResponse)
+@router.get("/audit-log", response_model=PaginatedResponse[AuditLogResponse])
 def list_audit_log(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -21,7 +21,7 @@ def list_audit_log(
     """SF5, N11, N12: Audit log with filtering."""
     query = db.query(AuditLog).order_by(AuditLog.created_at.desc())
 
-    if current_user.role == RoleEnum.MAGAZYNIER:
+    if current_user.role == RoleEnum.WORKER:
         query = query.filter(AuditLog.user_id == current_user.id)
 
     if entity_type:

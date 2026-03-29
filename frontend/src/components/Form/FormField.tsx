@@ -1,30 +1,25 @@
-import { Controller } from 'react-hook-form';
+import { forwardRef } from 'react';
 import { TextField } from '@mui/material';
-import type { Control } from 'react-hook-form';
 import type { TextFieldProps } from '@mui/material/TextField';
+import type { FieldError } from 'react-hook-form';
 
-interface FormFieldProps extends Omit<TextFieldProps, 'name'> {
-  name: string;
-  control: Control<any>;
+interface FormFieldProps extends Omit<TextFieldProps, 'error'> {
+  error?: FieldError;
 }
 
-const FormField = ({ name, control, ...props }: FormFieldProps) => {
+const FormField = forwardRef<HTMLInputElement, FormFieldProps>(({ error, ...props }, ref) => {
   return (
-    <Controller
-      name={name}
-      control={control}
-      render={({ field, fieldState }) => (
-        <TextField
-          {...field}
-          {...props}
-          error={!!fieldState.error}
-          helperText={fieldState.error?.message}
-          fullWidth
-          size="small"
-        />
-      )}
+    <TextField
+      {...props}
+      inputRef={ref}
+      error={!!error}
+      helperText={error?.message || props.helperText}
+      fullWidth
+      size="small"
     />
   );
-};
+});
+
+FormField.displayName = 'FormField';
 
 export default FormField;

@@ -8,11 +8,12 @@ from app.middleware.auth import require_permission
 from app.models.models import User, RoleEnum
 from app.schemas.schemas import UserCreate, UserUpdate, UserResponse, PaginatedResponse
 from app.services.audit import log_action
+from app.services.versioning import check_version
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
-@router.get("", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse[UserResponse])
 def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
@@ -20,23 +21,24 @@ def list_users(
     current_user: User = require_permission("users", "READ"),
     db: Session = Depends(get_db),
 ):
-    query = db.query(User)
+    count_query = db.query(User)
+    data_query = db.query(User)
 
     if search:
         s = f"%{search.strip().lower()}%"
-        query = query.filter(
-            or_(
-                func.lower(User.first_name).like(s),
-                func.lower(User.last_name).like(s),
-                func.lower(User.email).like(s),
-                func.lower(User.login_code).like(s),
-            )
+        search_filter = or_(
+            func.lower(User.first_name).like(s),
+            func.lower(User.last_name).like(s),
+            func.lower(User.email).like(s),
+            func.lower(User.login_code).like(s),
         )
+        count_query = count_query.filter(search_filter)
+        data_query = data_query.filter(search_filter)
 
-    total = query.count()
-    users = query.offset((page - 1) * page_size).limit(page_size).all()
+    total = count_query.count()
+    users = data_query.order_by(User.last_name, User.first_name).offset((page - 1) * page_size).limit(page_size).all()
 
-    return PaginatedResponse(
+    return PaginatedResponse[UserResponse](
         items=[UserResponse.model_validate(u) for u in users],
         total=total,
         page=page,
@@ -52,9 +54,11 @@ def create_user(
     db: Session = Depends(get_db),
 ):
     if db.query(User).filter(User.email == data.email).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email już istnieje.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email już istnieje.",
+        )
 
-    # FIX: query(User.login_code).all() zwraca tuple/Row, więc bierzemy (code,)
     existing_codes = {code for (code,) in db.query(User.login_code).all()}
     login_code = generate_login_code(existing_codes)
 
@@ -66,12 +70,10 @@ def create_user(
         last_name=data.last_name,
         role=RoleEnum(data.role),
     )
-
     db.add(user)
+    db.flush()
     log_action(
-        db,
-        "CREATE",
-        "User",
+        db, "CREATE", "User", user.id,
         details={"email": data.email, "role": data.role, "login_code": login_code},
         user_id=current_user.id,
     )
@@ -88,7 +90,10 @@ def get_user(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Użytkownik nie znaleziony.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Użytkownik nie znaleziony.",
+        )
     return UserResponse.model_validate(user)
 
 
@@ -101,15 +106,40 @@ def update_user(
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Użytkownik nie znaleziony.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Użytkownik nie znaleziony.",
+        )
+
+    # Zabezpieczenie: admin nie może sam siebie dezaktywować ani zmienić sobie roli
+    if user.id == current_user.id:
+        payload = data.model_dump(exclude_unset=True)
+        if "is_active" in payload and payload["is_active"] is False:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nie możesz dezaktywować własnego konta.",
+            )
+        if "role" in payload and payload["role"] != current_user.role.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nie możesz zmienić własnej roli.",
+            )
 
     payload = data.model_dump(exclude_unset=True)
+    payload.pop("version", None)  # version nie jest polem modelu do ustawienia
 
-    # Najpierw walidacja konfliktu email/code, potem ustawianie
     if "email" in payload and payload["email"]:
-        dup = db.query(User).filter(User.email == payload["email"], User.id != user_id).first()
+        dup = db.query(User).filter(
+            User.email == payload["email"],
+            User.id != user_id,
+        ).first()
         if dup:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email już istnieje.")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email już istnieje.",
+            )
+
+    check_version(user, data.version)
 
     changes = {}
     for field, value in payload.items():
@@ -119,6 +149,7 @@ def update_user(
             setattr(user, field, value)
         changes[field] = value
 
+    user.version += 1
     log_action(db, "UPDATE", "User", user.id, details=changes, user_id=current_user.id)
     db.commit()
     db.refresh(user)
