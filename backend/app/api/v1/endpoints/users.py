@@ -128,17 +128,6 @@ def update_user(
     payload = data.model_dump(exclude_unset=True)
     payload.pop("version", None)  # version nie jest polem modelu do ustawienia
 
-    if "email" in payload and payload["email"]:
-        dup = db.query(User).filter(
-            User.email == payload["email"],
-            User.id != user_id,
-        ).first()
-        if dup:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email już istnieje.",
-            )
-
     check_version(user, data.version)
 
     changes = {}

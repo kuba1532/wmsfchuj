@@ -88,6 +88,12 @@ def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Uzytkownik nie istnieje lub jest nieaktywny.")
 
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesja wygasla — konto zostalo zablokowane. Zaloguj sie ponownie po odblokowaniu.",
+        )
+
     token_data = {"sub": str(user.id), "role": user.role.value, "login": user.login_code}
 
     return TokenResponse(

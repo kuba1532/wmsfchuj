@@ -1,103 +1,210 @@
-import { Box, Typography, Card, CardContent, Button, Grid, Alert } from '@mui/material';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  Grid,
+  Alert,
+  CircularProgress,
+} from '@mui/material';
 import { BarChart, Download, Inventory2, SwapHoriz, Assignment } from '@mui/icons-material';
+import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { utils, writeFile } from 'xlsx';
 
-const MOCK_STOCK_DATA = [
-  {
-    SKU: 'SKU-001',
-    Produkt: 'Śruba M8x40',
-    Lokalizacja: 'R1-A-01',
-    Ilość: 500,
-    Status: 'Dostępny',
-  },
-  {
-    SKU: 'SKU-001',
-    Produkt: 'Śruba M8x40',
-    Lokalizacja: 'R1-A-02',
-    Ilość: 2000,
-    Status: 'Dostępny',
-  },
-  {
-    SKU: 'SKU-002',
-    Produkt: 'Nakrętka M8',
-    Lokalizacja: 'R1-B-02',
-    Ilość: 4800,
-    Status: 'Dostępny',
-  },
-  {
-    SKU: 'SKU-003',
-    Produkt: 'Olej hydrauliczny 5L',
-    Lokalizacja: 'R3-B-02',
-    Ilość: 120,
-    Status: 'Dostępny',
-  },
-  {
-    SKU: 'SKU-004',
-    Produkt: 'Filtr powietrza FP-200',
-    Lokalizacja: 'R2-A-03',
-    Ilość: 340,
-    Status: 'Zablokowany',
-  },
-];
+interface StockRow {
+  id: number;
+  quantity: number;
+  status: string;
+  product_id: number;
+  location_id: number;
+  product?: { sku?: string; name?: string };
+  location?: { code?: string };
+}
 
-const MOCK_MOVEMENTS_DATA = [
-  {
-    Data: '2025-06-18 14:32',
-    Typ: 'Przyjęcie',
-    Dokument: 'PZ/2025/005',
-    Produkt: 'Śruba M8x40',
-    Ilość: 500,
-    Z: '-',
-    Do: 'BUFOR-01',
-    Użytkownik: 'Jan Kowalski',
-  },
-  {
-    Data: '2025-06-18 14:45',
-    Typ: 'Rozmieszczenie',
-    Dokument: 'PZ/2025/005',
-    Produkt: 'Śruba M8x40',
-    Ilość: 500,
-    Z: 'BUFOR-01',
-    Do: 'R1-A-01',
-    Użytkownik: 'Jan Kowalski',
-  },
-  {
-    Data: '2025-06-18 15:10',
-    Typ: 'Przesunięcie',
-    Dokument: 'MM/2025/012',
-    Produkt: 'Filtr powietrza FP-200',
-    Ilość: 50,
-    Z: 'R2-A-03',
-    Do: 'R4-C-01',
-    Użytkownik: 'Anna Nowak',
-  },
-];
+interface LedgerRow {
+  id: number;
+  movement_type: string;
+  product_id: number;
+  from_location_id?: number | null;
+  to_location_id?: number | null;
+  quantity: number;
+  document_number?: string | null;
+  user_id: number;
+  created_at: string;
+}
 
-const MOCK_TASKS_DATA = [
-  { Magazynier: 'Jan Kowalski', Typ: 'Rozmieszczanie', Wykonane: 12, Średni_czas_min: 4.5 },
-  { Magazynier: 'Jan Kowalski', Typ: 'Kompletacja', Wykonane: 8, Średni_czas_min: 6.2 },
-  { Magazynier: 'Anna Nowak', Typ: 'Rozmieszczanie', Wykonane: 15, Średni_czas_min: 3.8 },
-  { Magazynier: 'Anna Nowak', Typ: 'Kompletacja', Wykonane: 10, Średni_czas_min: 5.1 },
-];
+interface TaskRow {
+  id: number;
+  type: string;
+  status: string;
+  product_id?: number | null;
+  quantity: number;
+  assigned_to_id?: number | null;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
 
-const MOCK_DOCUMENTS_DATA = [
-  { Miesiąc: '2025-06', Typ: 'PZ', Ilość_dokumentów: 6, Suma_pozycji: 31 },
-  { Miesiąc: '2025-06', Typ: 'RW', Ilość_dokumentów: 5, Suma_pozycji: 16 },
-  { Miesiąc: '2025-06', Typ: 'MM', Ilość_dokumentów: 4, Suma_pozycji: 11 },
-];
+interface DocumentRow {
+  id: number;
+  number: string;
+  type: string;
+  status: string;
+  created_at: string;
+}
+
+interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
 
 interface ReportConfig {
   title: string;
   description: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   color: string;
   data: Record<string, unknown>[];
   filename: string;
+  loading?: boolean;
 }
 
+const formatDate = (value: string) =>
+  value ? new Date(value).toLocaleString('pl-PL') : '—';
+
+const fetchAllPages = async <T,>(path: string, extraParams?: Record<string, string>) => {
+  const pageSize = 100;
+  let page = 1;
+  let pages = 1;
+  const items: T[] = [];
+
+  do {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      ...extraParams,
+    });
+    const response = await apiClient.get<PaginatedResponse<T>>(`${path}?${params.toString()}`);
+    const data = response.data;
+    items.push(...(data.items ?? []));
+    pages = data.pages ?? 1;
+    page += 1;
+  } while (page <= pages);
+
+  return items;
+};
+
 const ReportsPage = () => {
-  const { showSuccess } = useNotification();
+  const { showSuccess, showError } = useNotification();
+  const [loading, setLoading] = useState(true);
+  const [stockRows, setStockRows] = useState<StockRow[]>([]);
+  const [ledgerRows, setLedgerRows] = useState<LedgerRow[]>([]);
+  const [taskRows, setTaskRows] = useState<TaskRow[]>([]);
+  const [documentRows, setDocumentRows] = useState<DocumentRow[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [stock, ledger, tasks, documents] = await Promise.all([
+          fetchAllPages<StockRow>('/stock'),
+          fetchAllPages<LedgerRow>('/ledger'),
+          fetchAllPages<TaskRow>('/tasks'),
+          fetchAllPages<DocumentRow>('/documents'),
+        ]);
+
+        if (!active) return;
+        setStockRows(stock);
+        setLedgerRows(ledger);
+        setTaskRows(tasks);
+        setDocumentRows(documents);
+      } catch {
+        if (!active) return;
+        showError('Nie udało się pobrać danych raportowych.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      active = false;
+    };
+  }, [showError]);
+
+  const stockReportData = useMemo(
+    () =>
+      stockRows.map((row) => ({
+        SKU: row.product?.sku ?? `#${row.product_id}`,
+        Produkt: row.product?.name ?? `Produkt #${row.product_id}`,
+        Lokalizacja: row.location?.code ?? `#${row.location_id}`,
+        Ilość: row.quantity,
+        Status: row.status,
+      })),
+    [stockRows],
+  );
+
+  const ledgerReportData = useMemo(
+    () =>
+      ledgerRows.map((row) => ({
+        Data: formatDate(row.created_at),
+        Typ: row.movement_type,
+        Dokument: row.document_number ?? '—',
+        Produkt_ID: row.product_id,
+        Ilość: row.quantity,
+        Z_lokalizacji: row.from_location_id ?? '—',
+        Do_lokalizacji: row.to_location_id ?? '—',
+        Użytkownik_ID: row.user_id,
+      })),
+    [ledgerRows],
+  );
+
+  const taskReportData = useMemo(() => {
+    const grouped = new Map<string, { Typ: string; Status: string; Liczba_zadań: number }>();
+    for (const row of taskRows) {
+      const key = `${row.type}::${row.status}`;
+      const current = grouped.get(key);
+      if (current) {
+        current.Liczba_zadań += 1;
+      } else {
+        grouped.set(key, {
+          Typ: row.type,
+          Status: row.status,
+          Liczba_zadań: 1,
+        });
+      }
+    }
+    return Array.from(grouped.values()).sort((a, b) =>
+      `${a.Typ}-${a.Status}`.localeCompare(`${b.Typ}-${b.Status}`, 'pl'),
+    );
+  }, [taskRows]);
+
+  const documentReportData = useMemo(() => {
+    const grouped = new Map<string, { Typ: string; Status: string; Liczba_dokumentów: number }>();
+    for (const row of documentRows) {
+      const key = `${row.type}::${row.status}`;
+      const current = grouped.get(key);
+      if (current) {
+        current.Liczba_dokumentów += 1;
+      } else {
+        grouped.set(key, {
+          Typ: row.type,
+          Status: row.status,
+          Liczba_dokumentów: 1,
+        });
+      }
+    }
+    return Array.from(grouped.values()).sort((a, b) =>
+      `${a.Typ}-${a.Status}`.localeCompare(`${b.Typ}-${b.Status}`, 'pl'),
+    );
+  }, [documentRows]);
 
   const reports: ReportConfig[] = [
     {
@@ -105,32 +212,36 @@ const ReportsPage = () => {
       description: 'Zestawienie aktualnych stanów z podziałem na lokalizacje i statusy',
       icon: <Inventory2 sx={{ fontSize: 40 }} />,
       color: '#1565C0',
-      data: MOCK_STOCK_DATA,
+      data: stockReportData,
       filename: 'stany_magazynowe',
+      loading,
     },
     {
       title: 'Historia ruchów',
-      description: 'Raport ruchów magazynowych za wybrany okres z filtrowaniem',
+      description: 'Raport ruchów magazynowych z rzeczywistego rejestru operacji',
       icon: <SwapHoriz sx={{ fontSize: 40 }} />,
       color: '#FF8F00',
-      data: MOCK_MOVEMENTS_DATA,
+      data: ledgerReportData,
       filename: 'historia_ruchow',
+      loading,
     },
     {
       title: 'Realizacja zadań',
-      description: 'Statystyki realizacji zadań per magazynier i typ operacji',
+      description: 'Zestawienie liczby zadań według typu i statusu',
       icon: <Assignment sx={{ fontSize: 40 }} />,
       color: '#2E7D32',
-      data: MOCK_TASKS_DATA,
+      data: taskReportData,
       filename: 'realizacja_zadan',
+      loading,
     },
     {
       title: 'Analiza przyjęć/wydań',
-      description: 'Podsumowanie dokumentów PZ/RW za wybrany okres',
+      description: 'Podsumowanie dokumentów według typu i statusu',
       icon: <BarChart sx={{ fontSize: 40 }} />,
       color: '#7B1FA2',
-      data: MOCK_DOCUMENTS_DATA,
+      data: documentReportData,
       filename: 'analiza_dokumentow',
+      loading,
     },
   ];
 
@@ -171,13 +282,16 @@ const ReportsPage = () => {
                   {report.description}
                 </Typography>
                 <Alert severity="info" sx={{ mb: 2, py: 0 }}>
-                  <Typography variant="caption">{report.data.length} rekordów</Typography>
+                  <Typography variant="caption">
+                    {report.loading ? 'Ładowanie danych...' : `${report.data.length} rekordów`}
+                  </Typography>
                 </Alert>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
                     variant="outlined"
                     size="small"
                     startIcon={<Download />}
+                    disabled={report.loading || report.data.length === 0}
                     onClick={() => exportCSV(report.data, report.filename)}
                   >
                     CSV
@@ -186,11 +300,17 @@ const ReportsPage = () => {
                     variant="contained"
                     size="small"
                     startIcon={<Download />}
+                    disabled={report.loading || report.data.length === 0}
                     onClick={() => exportXLSX(report.data, report.filename)}
                   >
                     XLSX
                   </Button>
                 </Box>
+                {report.loading && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                    <CircularProgress size={22} />
+                  </Box>
+                )}
               </CardContent>
             </Card>
           </Grid>

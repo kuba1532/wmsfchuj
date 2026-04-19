@@ -4,6 +4,13 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Aplikacja łączy się z serwerem WMS w sieci lokalnej (komputer deweloperski).</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Aplikacja używa kamery do skanowania kodów kreskowych (EAN/SKU).</string>
 	<key>CFBundleDevelopmentRegion</key>

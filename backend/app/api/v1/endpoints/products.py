@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.middleware.auth import require_permission
-from app.models.models import User, Product
+from app.models.models import User, Product, SupplierProduct
 from app.schemas.schemas import ProductCreate, ProductUpdate, ProductResponse, PaginatedResponse
 from app.services.audit import log_action
 from app.services.versioning import check_version
@@ -17,11 +17,20 @@ def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     search: str = Query("", max_length=100),
+    supplier_id: int = Query(0, ge=0, description=">0: tylko produkty przypisane do dostawcy"),
     current_user: User = require_permission("dictionaries", "READ"),
     db: Session = Depends(get_db),
 ):
     count_query = db.query(Product).filter(Product.is_active.is_(True))
     data_query = db.query(Product).filter(Product.is_active.is_(True))
+
+    if supplier_id > 0:
+        count_query = count_query.join(
+            SupplierProduct, SupplierProduct.product_id == Product.id
+        ).filter(SupplierProduct.supplier_id == supplier_id)
+        data_query = data_query.join(
+            SupplierProduct, SupplierProduct.product_id == Product.id
+        ).filter(SupplierProduct.supplier_id == supplier_id)
 
     if search:
         s = f"%{search.strip().lower()}%"

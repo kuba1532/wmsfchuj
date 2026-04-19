@@ -155,9 +155,41 @@ class Stock(Base):
     location = relationship("Location", back_populates="stock_items")
 
     __table_args__ = (
-        UniqueConstraint("product_id", "location_id", name="uq_stock_product_location"),
+        # Pozwalamy miec dwa rekordy na ten sam produkt+lokalizacje, pod warunkiem
+        # ze maja rozne statusy (np. AVAILABLE + BLOCKED po czesciowym zablokowaniu).
+        UniqueConstraint(
+            "product_id", "location_id", "status", name="uq_stock_product_location_status"
+        ),
         Index("ix_stock_product_location", "product_id", "location_id"),
     )
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+
+    products_link = relationship(
+        "SupplierProduct",
+        back_populates="supplier",
+        cascade="all, delete-orphan",
+    )
+
+
+class SupplierProduct(Base):
+    __tablename__ = "supplier_products"
+
+    supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="CASCADE"), primary_key=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
+
+    supplier = relationship("Supplier", back_populates="products_link")
+    product = relationship("Product")
 
 
 class Document(Base):
@@ -167,6 +199,7 @@ class Document(Base):
     number = Column(String(50), unique=True, nullable=False, index=True)
     type = Column(Enum(DocumentTypeEnum), nullable=False)
     status = Column(Enum(DocumentStatusEnum), nullable=False, default=DocumentStatusEnum.DRAFT)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     supplier = Column(String(255), nullable=True)
     from_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
     to_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
@@ -180,6 +213,7 @@ class Document(Base):
     created_by_user = relationship("User", back_populates="created_documents")
     from_location = relationship("Location", foreign_keys=[from_location_id])
     to_location = relationship("Location", foreign_keys=[to_location_id])
+    supplier_ref = relationship("Supplier", foreign_keys=[supplier_id])
 
 
 class DocumentItem(Base):

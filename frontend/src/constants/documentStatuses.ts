@@ -7,9 +7,9 @@ export enum DocumentStatus {
 }
 
 export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
-  [DocumentStatus.DRAFT]: 'Roboczy',
+  [DocumentStatus.DRAFT]: 'Nowy',
   [DocumentStatus.CONFIRMED]: 'Zatwierdzony',
-  [DocumentStatus.IN_PROGRESS]: 'W realizacji',
+  [DocumentStatus.IN_PROGRESS]: 'W trakcie',
   [DocumentStatus.COMPLETED]: 'Zakończony',
   [DocumentStatus.CANCELLED]: 'Anulowany',
 };

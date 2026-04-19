@@ -1,0 +1,50 @@
+# -----------------------------------------------------------------------------
+# Root .gitignore — WMS project
+# (backend, frontend, wms_worker mają własne lokalne .gitignore; to plik ogólny)
+# -----------------------------------------------------------------------------
+
+# Narzędzie e2e (local only, nie jest częścią produktu)
+e2e_tests/
+
+# IDE / system
+.DS_Store
+.vscode/
+.idea/
+
+# Logi / tymczasowe
+*.log
+tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+.cache/
+
+# Env (każdy developer robi lokalny .env)
+.env
+.env.local
+.env.*.local
+
+# iOS / Flutter (dodatkowo do lokalnych .gitignore w wms_worker)
+**/Pods/
+**/.symlinks/
+**/DerivedData/
+**/Flutter/ephemeral/
+**/Flutter/Flutter.framework
+**/Flutter/App.framework
+**/xcuserdata/
+
+# Artefakty testowe
+coverage/

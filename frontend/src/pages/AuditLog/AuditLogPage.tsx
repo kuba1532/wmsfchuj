@@ -77,8 +77,8 @@ const AuditLogPage = () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({ page: '1', page_size: '100' });
-      if (searchVal) params.append('search', searchVal);
-      const response = await apiClient.get(`/audit?${params.toString()}`);
+      if (searchVal) params.append('entity_type', searchVal);
+      const response = await apiClient.get(`/audit-log?${params.toString()}`);
       setEntries(response.data.items ?? []);
       setTotal(response.data.total ?? 0);
     } catch {

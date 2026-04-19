@@ -37,6 +37,15 @@ Kod logowania: **5 cyfr** (pole `login` w API), hasło jak w systemie WWW.
 
 Rola **WORKER** powinna mieć: `tasks` → wykonanie, `documents` → operacyjnie (tworzenie PZ), `dictionaries` → odczyt (wyszukiwanie produktów).
 
+### Demo (świeża baza, seed w backendzie)
+
+| Konto        | Kod  | Hasło (domyślnie) |
+|-------------|------|-------------------|
+| Magazynier  | `00002` | `Demo1234` (lub `DEMO_WORKER_PASSWORD` w `.env` backendu) |
+| Administrator | `00001` | jak w `ADMIN_PASSWORD` w `.env` |
+
+Szczegóły: plik **[DEMO.md](../DEMO.md)** w katalogu głównym repozytorium.
+
 ## Funkcje
 
 | Ekran | API |

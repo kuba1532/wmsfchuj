@@ -29,6 +29,7 @@ const StockPage = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
+  const [quantityInput, setQuantityInput] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { canChangeStockStatus } = usePermissions();
   const { showError } = useNotification();
@@ -52,13 +53,28 @@ const StockPage = () => {
 
   const handleStatusChange = async () => {
     if (!selectedItem) return;
+    const currentQty = Number(selectedItem.quantity);
+    const parsedQty = Number(quantityInput);
+    const qty =
+      quantityInput.trim() === '' || !Number.isFinite(parsedQty) ? currentQty : parsedQty;
+
+    if (qty <= 0) {
+      showError('Ilość musi być większa od zera.');
+      return;
+    }
+    if (qty > currentQty) {
+      showError(`Ilość nie może przekraczać dostępnego stanu (${currentQty}).`);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const newStatus =
         selectedItem.status === StockStatus.AVAILABLE ? StockStatus.BLOCKED : StockStatus.AVAILABLE;
-      await changeStatus(selectedItem.id, newStatus);
+      await changeStatus(selectedItem.id, newStatus, selectedItem.version, qty);
       setStatusDialogOpen(false);
       setSelectedItem(null);
+      setQuantityInput('');
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
@@ -122,6 +138,7 @@ const StockPage = () => {
                   size="small"
                   onClick={() => {
                     setSelectedItem(params.row);
+                    setQuantityInput(String(params.row.quantity));
                     setStatusDialogOpen(true);
                   }}
                 >
@@ -191,6 +208,7 @@ const StockPage = () => {
         onClose={() => {
           setStatusDialogOpen(false);
           setSelectedItem(null);
+          setQuantityInput('');
         }}
         maxWidth="xs"
         fullWidth
@@ -204,6 +222,7 @@ const StockPage = () => {
             onClick={() => {
               setStatusDialogOpen(false);
               setSelectedItem(null);
+              setQuantityInput('');
             }}
           >
             <Close />
@@ -268,6 +287,41 @@ const StockPage = () => {
                   }}
                 />
               </Box>
+              <TextField
+                label={
+                  selectedItem.status === StockStatus.AVAILABLE
+                    ? 'Ilość do zablokowania'
+                    : 'Ilość do odblokowania'
+                }
+                type="number"
+                size="small"
+                fullWidth
+                value={quantityInput}
+                onChange={(e) => setQuantityInput(e.target.value)}
+                helperText={`Dostępne: ${selectedItem.quantity}. Puste pole lub pełna ilość = cała pozycja.`}
+                inputProps={{
+                  min: 0,
+                  max: Number(selectedItem.quantity),
+                  step: 'any',
+                }}
+              />
+              {Number(quantityInput) > 0 &&
+                Number(quantityInput) < Number(selectedItem.quantity) && (
+                  <Alert severity="info">
+                    Rekord zostanie rozdzielony: {Number(selectedItem.quantity) - Number(quantityInput)}{' '}
+                    {selectedItem.product?.unit ?? ''} zostanie w statusie{' '}
+                    <b>{STOCK_STATUS_LABELS[selectedItem.status]}</b>, a {quantityInput}{' '}
+                    {selectedItem.product?.unit ?? ''} trafi do statusu{' '}
+                    <b>
+                      {STOCK_STATUS_LABELS[
+                        selectedItem.status === StockStatus.AVAILABLE
+                          ? StockStatus.BLOCKED
+                          : StockStatus.AVAILABLE
+                      ]}
+                    </b>
+                    .
+                  </Alert>
+                )}
               {selectedItem.status === StockStatus.AVAILABLE && (
                 <Alert severity="warning">
                   Zablokowany towar nie będzie widoczny w procesie kompletacji.
@@ -283,6 +337,7 @@ const StockPage = () => {
             onClick={() => {
               setStatusDialogOpen(false);
               setSelectedItem(null);
+              setQuantityInput('');
             }}
           >
             Anuluj

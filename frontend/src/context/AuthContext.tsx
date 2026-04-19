@@ -46,35 +46,38 @@ const clearStorage = () => {
   localStorage.removeItem('user');
 };
 
+// Synchroniczny odczyt zapisanej sesji z localStorage — MUSI byc wykonany
+// w lazy-initializerze useState, inaczej pierwszy render widzi null
+// i AuthGuard przekierowuje na /login zanim useEffect zdązy przywrócić stan
+// (to by znaczyło: F5/bezpośredni URL = wylogowanie).
+const loadStoredSession = (): { token: string | null; refresh: string | null; user: User | null } => {
+  const storedAccess = localStorage.getItem('accessToken');
+  const storedRefresh = localStorage.getItem('refreshToken');
+  const storedUser = localStorage.getItem('user');
+
+  if (!storedAccess || !storedUser) {
+    clearStorage();
+    return { token: null, refresh: null, user: null };
+  }
+
+  if (isTokenExpired(storedAccess)) {
+    clearStorage();
+    return { token: null, refresh: null, user: null };
+  }
+
+  try {
+    return { token: storedAccess, refresh: storedRefresh, user: JSON.parse(storedUser) };
+  } catch {
+    clearStorage();
+    return { token: null, refresh: null, user: null };
+  }
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState<string | null>(null);
-
-  // Inicjalizacja — walidacja tokenów z localStorage przy starcie
-  useEffect(() => {
-    const storedAccess = localStorage.getItem('accessToken');
-    const storedRefresh = localStorage.getItem('refreshToken');
-    const storedUser = localStorage.getItem('user');
-
-    if (!storedAccess || !storedUser) {
-      clearStorage();
-      return;
-    }
-
-    if (isTokenExpired(storedAccess)) {
-      clearStorage();
-      return;
-    }
-
-    try {
-      setUser(JSON.parse(storedUser));
-      setAccessToken(storedAccess);
-      setRefreshToken(storedRefresh);
-    } catch {
-      clearStorage();
-    }
-  }, []);
+  const initial = loadStoredSession();
+  const [user, setUser] = useState<User | null>(initial.user);
+  const [accessToken, setAccessToken] = useState<string | null>(initial.token);
+  const [refreshToken, setRefreshToken] = useState<string | null>(initial.refresh);
 
   // Auto-logout gdy token wygasa podczas aktywnej sesji
   useEffect(() => {

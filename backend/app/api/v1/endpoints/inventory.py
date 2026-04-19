@@ -10,11 +10,49 @@ from app.models.models import (
     User, Inventory, InventoryItem, Stock, StockLedger,
     InventoryTypeEnum, DocumentStatusEnum, MovementTypeEnum, RoleEnum,
 )
-from app.schemas.schemas import InventoryCreate, InventoryResponse, PaginatedResponse
+from app.schemas.schemas import (
+    InventoryCreate, InventoryResponse, InventoryItemResponse, PaginatedResponse,
+)
 from app.services.audit import log_action
 from app.services.numbering import generate_inventory_number
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
+
+
+def _serialize_inventory(inv: Inventory) -> InventoryResponse:
+    items_out: list[InventoryItemResponse] = []
+    for it in (inv.items or []):
+        items_out.append(
+            InventoryItemResponse(
+                id=it.id,
+                location_id=it.location_id,
+                product_id=it.product_id,
+                system_quantity=it.system_quantity,
+                actual_quantity=it.actual_quantity,
+                difference=it.difference,
+                location_code=(it.location.code if getattr(it, "location", None) else None),
+                product_sku=(it.product.sku if getattr(it, "product", None) else None),
+                product_name=(it.product.name if getattr(it, "product", None) else None),
+            )
+        )
+    return InventoryResponse(
+        id=inv.id,
+        number=inv.number,
+        type=inv.type.value if hasattr(inv.type, "value") else str(inv.type),
+        status=inv.status.value if hasattr(inv.status, "value") else str(inv.status),
+        counted_by_id=inv.counted_by_id,
+        approved_by_id=inv.approved_by_id,
+        created_at=inv.created_at,
+        approved_at=inv.approved_at,
+        items=items_out,
+    )
+
+
+def _inventory_eager_opts():
+    return (
+        joinedload(Inventory.items).joinedload(InventoryItem.product),
+        joinedload(Inventory.items).joinedload(InventoryItem.location),
+    )
 
 
 @router.get("", response_model=PaginatedResponse[InventoryResponse])
@@ -29,7 +67,7 @@ def list_inventories(
 
     items = (
         db.query(Inventory)
-        .options(joinedload(Inventory.items))
+        .options(*_inventory_eager_opts())
         .order_by(Inventory.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -37,7 +75,7 @@ def list_inventories(
     )
 
     return PaginatedResponse[InventoryResponse](
-        items=[InventoryResponse.model_validate(inv) for inv in items],
+        items=[_serialize_inventory(inv) for inv in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -92,7 +130,7 @@ def create_inventory(
     )
     db.commit()
     db.refresh(inventory)
-    return InventoryResponse.model_validate(inventory)
+    return _serialize_inventory(inventory)
 
 
 @router.get("/{inventory_id}", response_model=InventoryResponse)
@@ -103,7 +141,7 @@ def get_inventory(
 ):
     inventory = (
         db.query(Inventory)
-        .options(joinedload(Inventory.items))
+        .options(*_inventory_eager_opts())
         .filter(Inventory.id == inventory_id)
         .first()
     )
@@ -112,7 +150,7 @@ def get_inventory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Inwentaryzacja nie znaleziona.",
         )
-    return InventoryResponse.model_validate(inventory)
+    return _serialize_inventory(inventory)
 
 
 @router.post("/{inventory_id}/approve", response_model=InventoryResponse)
@@ -123,7 +161,7 @@ def approve_inventory(
 ):
     inventory = (
         db.query(Inventory)
-        .options(joinedload(Inventory.items))
+        .options(*_inventory_eager_opts())
         .filter(Inventory.id == inventory_id)
         .first()
     )
@@ -180,4 +218,4 @@ def approve_inventory(
     )
     db.commit()
     db.refresh(inventory)
-    return InventoryResponse.model_validate(inventory)
+    return _serialize_inventory(inventory)

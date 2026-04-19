@@ -19,8 +19,12 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    # CORS
+    # CORS — lista dokładnych originów (np. frontend Vite)
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    # True = dopuść też localhost / 127.0.0.1 z dowolnym portem (Flutter Web, inne narzędzia)
+    CORS_ALLOW_LOCALHOST_REGEX: bool = True
+    # True = dopuść origin http(s)://192.168.x.x:port i 10.x.x.x (demo w sieci LAN — tablet/telefon)
+    CORS_ALLOW_LAN: bool = True
 
     # Session / security
     SESSION_TIMEOUT_MINUTES: int = 30
@@ -30,6 +34,12 @@ class Settings(BaseSettings):
     # Admin (first run)
     ADMIN_EMAIL: str = "admin@wms.pl"
     ADMIN_PASSWORD: str
+
+    # Przykładowe zadania (tylko gdy tabela tasks jest pusta)
+    SEED_DEMO_TASKS: bool = True
+    # Konto magazyniera do demo mobilnego (zadania przypisane do tego użytkownika)
+    DEMO_WORKER_EMAIL: str = "magazynier@demo.wms"
+    DEMO_WORKER_PASSWORD: str = "Demo1234"
 
     @field_validator("JWT_SECRET_KEY")
     @classmethod

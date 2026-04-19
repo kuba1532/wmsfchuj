@@ -26,6 +26,7 @@ import FormField from '@/components/Form/FormField';
 import ScanButton from '@/components/Scanner/ScanButton';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import FormModal from '@/components/Modal/FormModal';
+import PageHeader from '@/components/Table/PageHeader';
 import { useProducts, type ProductItem } from '@/hooks/useProducts';
 
 const ProductsPage = () => {
@@ -170,20 +171,17 @@ const ProductsPage = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Produkty
-        </Typography>
-        {canCreate('dictionaries') && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Dodaj produkt
-          </Button>
-        )}
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Łącznie: {total}
-      </Typography>
+      <PageHeader
+        title="Produkty"
+        subtitle={`Łącznie rekordów: ${total}`}
+        action={
+          canCreate('dictionaries') ? (
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+              Dodaj produkt
+            </Button>
+          ) : null
+        }
+      />
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <TextField

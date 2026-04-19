@@ -16,10 +16,16 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Role } from '@/constants/roles';
 import { useNotification } from '@/context/NotificationContext';
-import { userSchema, type UserFormData } from '@/utils/validators';
+import {
+  userCreateSchema,
+  userEditSchema,
+  type UserCreateFormData,
+  type UserEditFormData,
+} from '@/utils/validators';
 import FormField from '@/components/Form/FormField';
 import FormSelect from '@/components/Form/FormSelect';
 import FormModal from '@/components/Modal/FormModal';
+import PageHeader from '@/components/Table/PageHeader';
 import { useUsers, type UserItem } from '@/hooks/useUsers';
 
 const ROLE_COLORS: Record<Role, string> = {
@@ -52,13 +58,13 @@ const UsersPage = () => {
     pageSize: 100,
   });
 
-  const createForm = useForm<UserFormData>({
-    resolver: zodResolver(userSchema),
-    defaultValues: { email: '', firstName: '', lastName: '', role: '' },
+  const createForm = useForm<UserCreateFormData>({
+    resolver: zodResolver(userCreateSchema),
+    defaultValues: { email: '', firstName: '', lastName: '', role: '', password: '' },
   });
 
-  const editForm = useForm<UserFormData>({
-    resolver: zodResolver(userSchema),
+  const editForm = useForm<UserEditFormData>({
+    resolver: zodResolver(userEditSchema),
   });
 
   const handleSearchChange = useCallback((value: string) => {
@@ -69,7 +75,7 @@ const UsersPage = () => {
     }, 400);
   }, []);
 
-  const handleCreate = async (data: UserFormData) => {
+  const handleCreate = async (data: UserCreateFormData) => {
     setIsSubmitting(true);
     try {
       await createUser({
@@ -90,12 +96,11 @@ const UsersPage = () => {
     }
   };
 
-  const handleEdit = async (data: UserFormData) => {
+  const handleEdit = async (data: UserEditFormData) => {
     if (!selectedUser) return;
     setIsSubmitting(true);
     try {
       await updateUser(selectedUser.id, {
-        email: data.email,
         first_name: data.firstName,
         last_name: data.lastName,
         role: data.role,
@@ -125,7 +130,6 @@ const UsersPage = () => {
   const openEdit = (user: UserItem) => {
     setSelectedUser(user);
     editForm.reset({
-      email: user.email,
       firstName: user.first_name,
       lastName: user.last_name,
       role: user.role,
@@ -202,42 +206,74 @@ const UsersPage = () => {
     },
   ];
 
-  const renderForm = (form: typeof createForm, isCreate = false) => (
+  const renderCreateForm = () => (
     <>
       <Box sx={{ display: 'flex', gap: 2 }}>
         <FormField
           label="Imię"
-          error={form.formState.errors.firstName}
-          {...form.register('firstName')}
+          error={createForm.formState.errors.firstName}
+          {...createForm.register('firstName')}
         />
         <FormField
           label="Nazwisko"
-          error={form.formState.errors.lastName}
-          {...form.register('lastName')}
+          error={createForm.formState.errors.lastName}
+          {...createForm.register('lastName')}
         />
       </Box>
       <FormField
         label="Adres email"
         placeholder="jan.kowalski@firma.pl"
-        error={form.formState.errors.email}
-        {...form.register('email')}
+        error={createForm.formState.errors.email}
+        {...createForm.register('email')}
       />
-      {isCreate && (
-        <FormField
-          label="Hasło"
-          type="password"
-          error={form.formState.errors.password}
-          {...form.register('password')}
-        />
-      )}
+      <FormField
+        label="Hasło"
+        type="password"
+        error={createForm.formState.errors.password}
+        {...createForm.register('password')}
+      />
       <Controller
         name="role"
-        control={form.control}
+        control={createForm.control}
         render={({ field }) => (
           <FormSelect
             label="Rola"
             options={ROLE_OPTIONS}
-            error={form.formState.errors.role}
+            error={createForm.formState.errors.role}
+            {...field}
+          />
+        )}
+      />
+    </>
+  );
+
+  const renderEditForm = () => (
+    <>
+      {selectedUser && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Email (nie można zmienić): <strong>{selectedUser.email}</strong>
+        </Typography>
+      )}
+      <Box sx={{ display: 'flex', gap: 2 }}>
+        <FormField
+          label="Imię"
+          error={editForm.formState.errors.firstName}
+          {...editForm.register('firstName')}
+        />
+        <FormField
+          label="Nazwisko"
+          error={editForm.formState.errors.lastName}
+          {...editForm.register('lastName')}
+        />
+      </Box>
+      <Controller
+        name="role"
+        control={editForm.control}
+        render={({ field }) => (
+          <FormSelect
+            label="Rola"
+            options={ROLE_OPTIONS}
+            error={editForm.formState.errors.role}
             {...field}
           />
         )}
@@ -247,18 +283,15 @@ const UsersPage = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Użytkownicy
-        </Typography>
-        <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setCreateOpen(true)}>
-          Utwórz konto
-        </Button>
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Łącznie: {total}
-      </Typography>
+      <PageHeader
+        title="Użytkownicy"
+        subtitle={`Łącznie rekordów: ${total}`}
+        action={
+          <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setCreateOpen(true)}>
+            Utwórz konto
+          </Button>
+        }
+      />
 
       <TextField
         placeholder="Szukaj po imieniu, nazwisku, emailu lub loginie..."
@@ -304,7 +337,7 @@ const UsersPage = () => {
         submitLabel="Utwórz konto"
         isSubmitting={isSubmitting}
       >
-        {renderForm(createForm, true)}
+        {renderCreateForm()}
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           Login (5-cyfrowy kod) zostanie wygenerowany automatycznie przez system.
         </Typography>
@@ -321,7 +354,7 @@ const UsersPage = () => {
         submitLabel="Zapisz zmiany"
         isSubmitting={isSubmitting}
       >
-        {renderForm(editForm, false)}
+        {renderEditForm()}
       </FormModal>
     </Box>
   );

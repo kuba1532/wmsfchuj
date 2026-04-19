@@ -58,6 +58,20 @@ String? _decStr(dynamic v) {
   return v.toString();
 }
 
+class Supplier {
+  Supplier({required this.id, required this.code, required this.name});
+
+  final int id;
+  final String code;
+  final String name;
+
+  factory Supplier.fromJson(Map<String, dynamic> j) => Supplier(
+        id: j['id'] as int,
+        code: j['code'] as String,
+        name: j['name'] as String,
+      );
+}
+
 class Product {
   Product({
     required this.id,
@@ -89,6 +103,7 @@ class DocumentHeader {
     required this.type,
     required this.status,
     this.supplier,
+    this.recipient,
   });
 
   final int id;
@@ -96,6 +111,7 @@ class DocumentHeader {
   final String type;
   final String status;
   final String? supplier;
+  final String? recipient;
 
   factory DocumentHeader.fromJson(Map<String, dynamic> j) => DocumentHeader(
         id: j['id'] as int,
@@ -103,7 +119,51 @@ class DocumentHeader {
         type: j['type'] as String,
         status: j['status'] as String,
         supplier: j['supplier'] as String?,
+        recipient: j['recipient'] as String?,
       );
+}
+
+class LocationItem {
+  LocationItem({required this.id, required this.code, required this.type});
+
+  final int id;
+  final String code;
+  final String type;
+
+  factory LocationItem.fromJson(Map<String, dynamic> j) => LocationItem(
+        id: j['id'] as int,
+        code: j['code'] as String,
+        type: j['type'] as String,
+      );
+}
+
+class StockRow {
+  StockRow({
+    required this.id,
+    required this.quantity,
+    this.productName,
+    this.locationCode,
+  });
+
+  final int id;
+  final String quantity;
+  final String? productName;
+  final String? locationCode;
+
+  factory StockRow.fromJson(Map<String, dynamic> j) {
+    String? pn;
+    String? lc;
+    final p = j['product'];
+    if (p is Map<String, dynamic>) pn = p['name'] as String?;
+    final l = j['location'];
+    if (l is Map<String, dynamic>) lc = l['code'] as String?;
+    return StockRow(
+      id: j['id'] as int,
+      quantity: _decStr(j['quantity']) ?? '0',
+      productName: pn,
+      locationCode: lc,
+    );
+  }
 }
 
 class PzLineDraft {

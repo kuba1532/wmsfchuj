@@ -15,7 +15,10 @@ export interface TaskItem {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
-  // Rozszerzone dane dołączane przez frontend (opcjonalne)
+  // Rozszerzone dane dołączane przez backend (opcjonalne)
+  product?: { id: number; sku: string; name: string; unit?: string } | null;
+  from_location?: { id: number; code: string; type?: string } | null;
+  to_location?: { id: number; code: string; type?: string } | null;
   product_name?: string;
   from_location_code?: string;
   to_location_code?: string;

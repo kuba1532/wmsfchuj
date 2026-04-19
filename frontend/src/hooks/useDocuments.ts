@@ -3,17 +3,28 @@ import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { DocumentStatus } from '@/constants/documentStatuses';
 
+export interface DocumentLineItem {
+  id: number;
+  product_id: number;
+  quantity: number;
+  product?: { id: number; sku: string; name: string; unit?: string } | null;
+}
+
 export interface DocumentItem {
   id: number;
   number: string;
   type: string;
   status: DocumentStatus;
+  supplier_id?: number;
   supplier?: string;
   from_location_id?: number;
   to_location_id?: number;
+  from_location_code?: string;
+  to_location_code?: string;
   recipient?: string;
   created_by_id: number;
   created_at: string;
+  items?: DocumentLineItem[];
 }
 
 interface UseDocumentsOptions {
@@ -29,9 +40,11 @@ interface UseDocumentsReturn {
   isLoading: boolean;
   refresh: () => void;
   createPZ: (data: {
-    supplier: string;
+    supplier_id: number;
     items: { product_id: number; quantity: number }[];
   }) => Promise<DocumentItem>;
+  pzStart: (id: number) => Promise<void>;
+  pzComplete: (id: number) => Promise<void>;
   createMM: (data: {
     from_location_id: number;
     to_location_id: number;
@@ -90,6 +103,24 @@ export function useDocuments({
     [fetchDocuments],
   );
 
+  const pzStart = useCallback(
+    async (id: number) => {
+      await apiClient.post(`/documents/${id}/pz/start`);
+      showSuccess('Przyjęcie oznaczono jako w trakcie.');
+      fetchDocuments();
+    },
+    [fetchDocuments, showSuccess],
+  );
+
+  const pzComplete = useCallback(
+    async (id: number) => {
+      await apiClient.post(`/documents/${id}/pz/complete`);
+      showSuccess('Przyjęcie zakończono — utworzono zadania odłożenia.');
+      fetchDocuments();
+    },
+    [fetchDocuments, showSuccess],
+  );
+
   const createMM = useCallback(
     async (data: Parameters<UseDocumentsReturn['createMM']>[0]) => {
       const response = await apiClient.post('/documents/mm', data);
@@ -134,6 +165,8 @@ export function useDocuments({
     isLoading,
     refresh: fetchDocuments,
     createPZ,
+    pzStart,
+    pzComplete,
     createMM,
     createRW,
     confirmDocument,

@@ -149,6 +149,7 @@ export interface DocumentResponse {
   number: string;
   type: 'PZ' | 'MM' | 'RW';
   status: 'DRAFT' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  supplier_id: number | null;
   supplier: string | null;
   from_location_id: number | null;
   to_location_id: number | null;
@@ -164,7 +165,7 @@ export interface DocumentItemCreate {
 }
 
 export interface DocumentCreatePZ {
-  supplier: string;
+  supplier_id: number;
   items: DocumentItemCreate[];
 }
 

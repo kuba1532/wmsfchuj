@@ -2,7 +2,8 @@ import { DocumentStatus } from './documentStatuses';
 import { TaskStatus } from './taskStatuses';
 
 export const DOCUMENT_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
-  [DocumentStatus.DRAFT]: [DocumentStatus.CONFIRMED, DocumentStatus.CANCELLED],
+  // PZ: DRAFT → IN_PROGRESS (start przyjęcia); MM/RW nadal przez CONFIRMED
+  [DocumentStatus.DRAFT]: [DocumentStatus.CONFIRMED, DocumentStatus.IN_PROGRESS, DocumentStatus.CANCELLED],
   [DocumentStatus.CONFIRMED]: [DocumentStatus.IN_PROGRESS, DocumentStatus.CANCELLED],
   [DocumentStatus.IN_PROGRESS]: [DocumentStatus.COMPLETED, DocumentStatus.CANCELLED],
   [DocumentStatus.COMPLETED]: [],

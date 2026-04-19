@@ -29,6 +29,7 @@ import { useNotification } from '@/context/NotificationContext';
 import { documentMMSchema, type DocumentMMFormData } from '@/utils/validators';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
+import PageHeader from '@/components/Table/PageHeader';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
 import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
@@ -154,16 +155,26 @@ const DocumentsMMPage = () => {
         value ? new Date(value).toLocaleDateString('pl-PL') : '—',
     },
     {
-      field: 'from_location_id',
+      field: 'from_location_code',
       headerName: 'Z lokalizacji',
-      width: 130,
-      valueFormatter: (value: number | null) => (value ? `#${value}` : '—'),
+      width: 150,
+      valueGetter: (_value, row) =>
+        row.from_location_code
+          ? `${row.from_location_code}${row.from_location_id ? ` (#${row.from_location_id})` : ''}`
+          : row.from_location_id
+            ? `#${row.from_location_id}`
+            : '—',
     },
     {
-      field: 'to_location_id',
+      field: 'to_location_code',
       headerName: 'Do lokalizacji',
-      width: 130,
-      valueFormatter: (value: number | null) => (value ? `#${value}` : '—'),
+      width: 150,
+      valueGetter: (_value, row) =>
+        row.to_location_code
+          ? `${row.to_location_code}${row.to_location_id ? ` (#${row.to_location_id})` : ''}`
+          : row.to_location_id
+            ? `#${row.to_location_id}`
+            : '—',
     },
     {
       field: 'status',
@@ -211,20 +222,17 @@ const DocumentsMMPage = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Przesunięcia międzymagazynowe (MM)
-        </Typography>
-        {canCreate('documents') && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Nowe przesunięcie
-          </Button>
-        )}
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Łącznie: {total}
-      </Typography>
+      <PageHeader
+        title="Przesunięcia międzymagazynowe (MM)"
+        subtitle={`Łącznie dokumentów: ${total}`}
+        action={
+          canCreate('documents') ? (
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+              Nowe przesunięcie
+            </Button>
+          ) : null
+        }
+      />
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <TextField
@@ -397,8 +405,15 @@ const DocumentsMMPage = () => {
                   label: 'Data',
                   value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
                 },
-                { label: 'Z lokalizacji (ID)', value: selectedDoc.from_location_id ?? '—' },
-                { label: 'Do lokalizacji (ID)', value: selectedDoc.to_location_id ?? '—' },
+                {
+                  label: 'Z lokalizacji',
+                  value:
+                    selectedDoc.from_location_code ?? `#${selectedDoc.from_location_id ?? '—'}`,
+                },
+                {
+                  label: 'Do lokalizacji',
+                  value: selectedDoc.to_location_code ?? `#${selectedDoc.to_location_id ?? '—'}`,
+                },
               ].map(({ label, value }) => (
                 <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" color="text.secondary">
@@ -421,6 +436,54 @@ const DocumentsMMPage = () => {
                   }}
                 />
               </Box>
+
+              <Divider />
+              <Typography variant="subtitle2" fontWeight={600}>
+                Pozycje dokumentu ({selectedDoc.items?.length ?? 0})
+              </Typography>
+              {(selectedDoc.items ?? []).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Brak pozycji.
+                </Typography>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '120px 1fr 100px',
+                    gap: 1,
+                    px: 1.5,
+                    py: 1,
+                    bgcolor: 'action.hover',
+                    borderRadius: 2,
+                  }}
+                >
+                  {['SKU', 'Produkt', 'Ilość'].map((h) => (
+                    <Typography key={h} variant="caption" fontWeight={700}>
+                      {h}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+              {selectedDoc.items?.map((it) => (
+                <Box
+                  key={it.id}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '120px 1fr 100px',
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.5,
+                  }}
+                >
+                  <Typography variant="body2" fontWeight={600}>
+                    {it.product?.sku ?? `#${it.product_id}`}
+                  </Typography>
+                  <Typography variant="body2">{it.product?.name ?? '—'}</Typography>
+                  <Typography variant="body2" sx={{ textAlign: 'right' }}>
+                    {it.quantity} {it.product?.unit ?? ''}
+                  </Typography>
+                </Box>
+              ))}
             </Box>
           )}
         </DialogContent>
@@ -457,8 +520,25 @@ const DocumentsMMPage = () => {
                     label: 'Data',
                     value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
                   },
+                  {
+                    label: 'Z lokalizacji',
+                    value:
+                      selectedDoc.from_location_code ??
+                      `#${selectedDoc.from_location_id ?? '—'}`,
+                  },
+                  {
+                    label: 'Do lokalizacji',
+                    value:
+                      selectedDoc.to_location_code ??
+                      `#${selectedDoc.to_location_id ?? '—'}`,
+                  },
                 ],
-                items: [],
+                items:
+                  selectedDoc.items?.map((it) => ({
+                    sku: it.product?.sku ?? `#${it.product_id}`,
+                    product: it.product?.name ?? '—',
+                    quantity: it.quantity,
+                  })) ?? [],
                 status: DOCUMENT_STATUS_LABELS[selectedDoc.status],
               });
             }}

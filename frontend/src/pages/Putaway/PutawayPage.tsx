@@ -22,10 +22,11 @@ const PutawayPage = () => {
   const [activeStep, setActiveStep] = useState(0);
   const { showError } = useNotification();
 
-  const { tasks, isLoading, startTask, completeTask } = useTasks({ statusFilter: 'NEW' });
+  const { tasks, isLoading, startTask, completeTask } = useTasks({});
 
-  // Filtruj tylko zadania rozmieszczania (PUTAWAY)
-  const putawayTasks = tasks.filter((t) => t.task_type === 'PUTAWAY');
+  const putawayTasks = tasks.filter(
+    (t) => t.type === 'PUTAWAY' && t.status !== 'CANCELLED',
+  );
 
   const handleStart = async (id: number) => {
     try {
@@ -92,8 +93,11 @@ const PutawayPage = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Ilość: {activeTask.quantity} |{' '}
-                  {activeTask.from_location?.code ?? `#${activeTask.from_location_id}`} →{' '}
-                  {activeTask.to_location?.code ?? `#${activeTask.to_location_id}`}
+                  {activeTask.from_location?.code ??
+                    (activeTask.from_location_id ? `#${activeTask.from_location_id}` : '—')}
+                  {' → '}
+                  {activeTask.to_location?.code ??
+                    (activeTask.to_location_id ? `#${activeTask.to_location_id}` : '—')}
                 </Typography>
               </Box>
               <Button variant="contained" onClick={handleNextStep}>
@@ -125,8 +129,12 @@ const PutawayPage = () => {
                   <Chip label={task.product?.sku ?? ''} size="small" variant="outlined" />
                 </Box>
                 <Typography variant="body2" color="text.secondary">
-                  Ilość: {task.quantity} | {task.from_location?.code ?? `#${task.from_location_id}`}{' '}
-                  → {task.to_location?.code ?? `#${task.to_location_id}`}
+                  Ilość: {task.quantity} |{' '}
+                  {task.from_location?.code ??
+                    (task.from_location_id ? `#${task.from_location_id}` : '—')}
+                  {' → '}
+                  {task.to_location?.code ??
+                    (task.to_location_id ? `#${task.to_location_id}` : '—')}
                 </Typography>
               </Box>
               {task.status === 'COMPLETED' ? (

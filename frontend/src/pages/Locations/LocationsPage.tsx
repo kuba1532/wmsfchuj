@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
   Box,
-  Typography,
   Button,
   TextField,
   InputAdornment,
@@ -22,6 +21,7 @@ import FormField from '@/components/Form/FormField';
 import FormSelect from '@/components/Form/FormSelect';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
+import PageHeader from '@/components/Table/PageHeader';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { useLocations, type LocationItem } from '@/hooks/useLocations';
 
@@ -128,6 +128,7 @@ const LocationsPage = () => {
   const bufferCount = locations.filter((l) => l.type === LocationType.BUFFER).length;
 
   const columns: GridColDef[] = [
+    { field: 'id', headerName: 'ID', width: 80 },
     { field: 'code', headerName: 'Kod lokalizacji', width: 150 },
     {
       field: 'type',
@@ -230,19 +231,17 @@ const LocationsPage = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Lokalizacje magazynowe
-        </Typography>
-        {canCreate('dictionaries') && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Dodaj lokalizację
-          </Button>
-        )}
-      </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Łącznie: {total} | Stref przyjęć (BUFFER): {bufferCount}
-      </Typography>
+      <PageHeader
+        title="Lokalizacje magazynowe"
+        subtitle={`Łącznie rekordów: ${total} | Stref przyjęć (BUFFER): ${bufferCount}`}
+        action={
+          canCreate('dictionaries') ? (
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+              Dodaj lokalizację
+            </Button>
+          ) : null
+        }
+      />
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <TextField

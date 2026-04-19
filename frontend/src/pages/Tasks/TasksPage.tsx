@@ -16,6 +16,7 @@ import { TASK_TYPE_LABELS } from '@/constants/taskTypes';
 import { useNotification } from '@/context/NotificationContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import useResponsive from '@/hooks/useResponsive';
+import PageHeader from '@/components/Table/PageHeader';
 import { useTasks } from '@/hooks/useTasks';
 import MobileTaskCard from './MobileTaskCard';
 import CreateTaskModal from './CreateTaskModal';
@@ -78,16 +79,17 @@ const TasksPage = () => {
 
   return (
     <Box sx={{ maxWidth: '100%', overflow: 'hidden' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h5" fontWeight={700} sx={{ fontSize: isMobile ? '1.3rem' : '1.4rem' }}>
-          Zadania
-        </Typography>
-        {canCreateTask() && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Utwórz zadanie
-          </Button>
-        )}
-      </Box>
+      <PageHeader
+        title="Zadania"
+        subtitle={`Widok: ${filter === 'active' ? 'aktywne' : filter === 'completed' ? 'zakończone' : 'wszystkie'}`}
+        action={
+          canCreateTask() ? (
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+              Utwórz zadanie
+            </Button>
+          ) : null
+        }
+      />
 
       <ToggleButtonGroup
         value={filter}
@@ -125,9 +127,18 @@ const TasksPage = () => {
                 key={task.id}
                 type={task.type}
                 status={task.status as TaskStatus}
-                product={task.product_name ?? `Produkt #${task.product_id}`}
-                from={task.from_location_code ?? `Lok. #${task.from_location_id}`}
-                to={task.to_location_code ?? `Lok. #${task.to_location_id}`}
+                product={
+                  task.product?.name ??
+                  (task.product_id ? `Produkt #${task.product_id}` : '—')
+                }
+                from={
+                  task.from_location?.code ??
+                  (task.from_location_id ? `Lok. #${task.from_location_id}` : '—')
+                }
+                to={
+                  task.to_location?.code ??
+                  (task.to_location_id ? `Lok. #${task.to_location_id}` : '—')
+                }
                 quantity={task.quantity}
                 onStart={() => handleStart(task.id)}
                 onComplete={() => handleComplete(task.id)}
@@ -163,12 +174,15 @@ const TasksPage = () => {
                       />
                     </Box>
                     <Typography variant="body1" fontWeight={600}>
-                      {task.product_name ?? `Produkt #${task.product_id}`}
+                      {task.product?.name ??
+                        (task.product_id ? `Produkt #${task.product_id}` : '—')}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {task.from_location_code ?? `Lok. #${task.from_location_id}`}
+                      {task.from_location?.code ??
+                        (task.from_location_id ? `Lok. #${task.from_location_id}` : '—')}
                       {' → '}
-                      {task.to_location_code ?? `Lok. #${task.to_location_id}`}
+                      {task.to_location?.code ??
+                        (task.to_location_id ? `Lok. #${task.to_location_id}` : '—')}
                       {' | Ilość: '}
                       {task.quantity}
                       {task.assigned_to_name ? ` | Przypisane: ${task.assigned_to_name}` : ''}

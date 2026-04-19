@@ -39,7 +39,7 @@ export const locationSchema = z.object({
 });
 
 export const documentPZSchema = z.object({
-  supplier: z.string().min(2, 'Dostawca jest wymagany'),
+  supplierId: z.number().min(1, 'Wybierz dostawcę z katalogu'),
   items: z
     .array(
       z.object({
@@ -89,18 +89,22 @@ export const taskSchema = z.object({
   quantity: z.number().min(0.001, 'Ilość musi być większa od 0'),
 });
 
-// userSchema bez pola password — dla edycji
-export const userSchema = z.object({
-  email: z.string().email('Podaj prawidłowy adres email'),
+// Wspólne pola profilu (edycja — bez email)
+export const userEditSchema = z.object({
   firstName: z.string().min(2, 'Imię jest wymagane'),
   lastName: z.string().min(2, 'Nazwisko jest wymagane'),
   role: z.string().min(1, 'Rola jest wymagana'),
-  // Pole opcjonalne — wymagane tylko przy tworzeniu (walidacja w userCreateSchema)
+});
+
+// Schema z emailem — np. testy / kompatybilność
+export const userSchema = userEditSchema.extend({
+  email: z.string().email('Podaj prawidłowy adres email'),
   password: z.string().optional(),
 });
 
-// Osobny schema do tworzenia użytkownika z obowiązkowym hasłem
-export const userCreateSchema = userSchema.extend({
+// Tworzenie konta: email + hasło wymagane
+export const userCreateSchema = userEditSchema.extend({
+  email: z.string().email('Podaj prawidłowy adres email'),
   password: z
     .string()
     .min(8, 'Hasło musi mieć minimum 8 znaków')
@@ -130,6 +134,7 @@ export type DocumentPZFormData = z.infer<typeof documentPZSchema>;
 export type DocumentMMFormData = z.infer<typeof documentMMSchema>;
 export type DocumentRWFormData = z.infer<typeof documentRWSchema>;
 export type TaskFormData = z.infer<typeof taskSchema>;
-export type UserFormData = z.infer<typeof userSchema>;
+export type UserFormData = z.infer<typeof userCreateSchema>;
+export type UserEditFormData = z.infer<typeof userEditSchema>;
 export type UserCreateFormData = z.infer<typeof userCreateSchema>;
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;

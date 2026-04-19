@@ -7,18 +7,63 @@ from sqlalchemy.orm import Session, joinedload
 from app.db.database import get_db
 from app.middleware.auth import require_permission
 from app.models.models import (
-    User, Document, DocumentItem, Stock, StockLedger, Task, Product, Location,
-    DocumentTypeEnum, DocumentStatusEnum, StockStatusEnum,
-    MovementTypeEnum, TaskTypeEnum, TaskStatusEnum, LocationTypeEnum,
+    User,
+    Document,
+    DocumentItem,
+    Stock,
+    StockLedger,
+    Task,
+    Product,
+    Location,
+    Supplier,
+    SupplierProduct,
+    DocumentTypeEnum,
+    DocumentStatusEnum,
+    StockStatusEnum,
+    MovementTypeEnum,
+    TaskTypeEnum,
+    TaskStatusEnum,
+    LocationTypeEnum,
 )
 from app.schemas.schemas import (
     DocumentCreatePZ, DocumentCreateMM, DocumentCreateRW,
-    DocumentResponse, PaginatedResponse,
+    DocumentResponse, DocumentItemResponse, ProductResponse, PaginatedResponse,
 )
 from app.services.audit import log_action
 from app.services.numbering import generate_document_number
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+
+def _serialize_document(doc: Document) -> DocumentResponse:
+    """Zwraca pełny DocumentResponse z pozycjami, kodami lokalizacji i produktami."""
+    items_out: list[DocumentItemResponse] = []
+    for it in (doc.items or []):
+        product = ProductResponse.model_validate(it.product) if it.product else None
+        items_out.append(
+            DocumentItemResponse(
+                id=it.id,
+                product_id=it.product_id,
+                quantity=it.quantity,
+                product=product,
+            )
+        )
+    return DocumentResponse(
+        id=doc.id,
+        number=doc.number,
+        type=doc.type.value if hasattr(doc.type, "value") else str(doc.type),
+        status=doc.status.value if hasattr(doc.status, "value") else str(doc.status),
+        supplier_id=doc.supplier_id,
+        supplier=doc.supplier,
+        from_location_id=doc.from_location_id,
+        to_location_id=doc.to_location_id,
+        from_location_code=(doc.from_location.code if doc.from_location else None),
+        to_location_code=(doc.to_location.code if doc.to_location else None),
+        recipient=doc.recipient,
+        created_by_id=doc.created_by_id,
+        created_at=doc.created_at,
+        items=items_out,
+    )
 
 
 # ─────────────────────────────
@@ -208,6 +253,53 @@ _TASK_TYPE_MAP = {
 }
 
 
+def _pz_putaway_tasks(doc: Document, db: Session, user_id: int) -> int:
+    n = 0
+    for item in doc.items:
+        db.add(
+            Task(
+                type=TaskTypeEnum.PUTAWAY,
+                status=TaskStatusEnum.ASSIGNED,
+                product_id=item.product_id,
+                from_location_id=doc.from_location_id,
+                to_location_id=doc.to_location_id,
+                quantity=item.quantity,
+                assigned_to_id=user_id,
+                document_id=doc.id,
+                created_by_id=user_id,
+            )
+        )
+        n += 1
+    return n
+
+
+def _create_tasks_for_document(doc: Document, db: Session, user_id: int) -> int:
+    task_type = _TASK_TYPE_MAP.get(doc.type)
+    if not task_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Nieobslugiwany typ dokumentu: {doc.type}.",
+        )
+
+    tasks_created = 0
+    for item in doc.items:
+        db.add(
+            Task(
+                type=task_type,
+                status=TaskStatusEnum.ASSIGNED,
+                product_id=item.product_id,
+                from_location_id=doc.from_location_id,
+                to_location_id=doc.to_location_id,
+                quantity=item.quantity,
+                assigned_to_id=user_id,
+                document_id=doc.id,
+                created_by_id=user_id,
+            )
+        )
+        tasks_created += 1
+    return tasks_created
+
+
 # ─────────────────────────────
 # ENDPOINTS
 # ─────────────────────────────
@@ -243,7 +335,11 @@ def list_documents(
     # Osobne query z joinedload dla danych
     data_query = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product))
+        .options(
+            joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.from_location),
+            joinedload(Document.to_location),
+        )
         .order_by(Document.created_at.desc())
     )
 
@@ -257,7 +353,7 @@ def list_documents(
     docs = data_query.offset((page - 1) * page_size).limit(page_size).all()
 
     return PaginatedResponse[DocumentResponse](
-        items=[DocumentResponse.model_validate(d) for d in docs],
+        items=[_serialize_document(d) for d in docs],
         total=total,
         page=page,
         page_size=page_size,
@@ -273,7 +369,7 @@ def get_document(
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
@@ -282,7 +378,7 @@ def get_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dokument nie znaleziony.",
         )
-    return DocumentResponse.model_validate(doc)
+    return _serialize_document(doc)
 
 
 @router.post("/pz", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -291,7 +387,35 @@ def create_pz(
     current_user: User = require_permission("documents", "OPERATIONAL"),
     db: Session = Depends(get_db),
 ):
+    sup = (
+        db.query(Supplier)
+        .filter(Supplier.id == data.supplier_id, Supplier.is_active.is_(True))
+        .first()
+    )
+    if not sup:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dostawca nie istnieje lub jest nieaktywny.",
+        )
+
+    allowed_rows = (
+        db.query(SupplierProduct.product_id)
+        .filter(SupplierProduct.supplier_id == data.supplier_id)
+        .all()
+    )
+    allowed_ids = {r[0] for r in allowed_rows}
+    if not allowed_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dostawca nie ma przypisanych produktow — uzupelnij katalog powiazan.",
+        )
+
     for item in data.items:
+        if item.product_id not in allowed_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Produkt ID {item.product_id} nie jest przypisany do wybranego dostawcy.",
+            )
         if not db.query(Product).filter(Product.id == item.product_id, Product.is_active.is_(True)).first():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -302,7 +426,9 @@ def create_pz(
     doc = Document(
         number=number,
         type=DocumentTypeEnum.PZ,
-        supplier=data.supplier,
+        status=DocumentStatusEnum.DRAFT,
+        supplier_id=data.supplier_id,
+        supplier=sup.name,
         created_by_id=current_user.id,
     )
     db.add(doc)
@@ -313,12 +439,77 @@ def create_pz(
 
     log_action(
         db, "CREATE", "Document", doc.id,
-        details={"type": "PZ", "number": number, "supplier": data.supplier},
+        details={"type": "PZ", "number": number, "supplier_id": data.supplier_id, "supplier": sup.name},
         user_id=current_user.id,
     )
     db.commit()
     db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return _serialize_document(doc)
+
+
+@router.post("/{document_id}/pz/start", response_model=DocumentResponse)
+def pz_start_receipt(
+    document_id: int,
+    current_user: User = require_permission("documents", "OPERATIONAL"),
+    db: Session = Depends(get_db),
+):
+    doc = (
+        db.query(Document)
+        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .filter(Document.id == document_id, Document.type == DocumentTypeEnum.PZ)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Przyjecie PZ nie znalezione.")
+    if doc.status != DocumentStatusEnum.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tylko przyjecie w statusie Nowy (DRAFT) mozna rozpoczac.",
+        )
+
+    doc.status = DocumentStatusEnum.IN_PROGRESS
+    log_action(
+        db, "PZ_START", "Document", doc.id,
+        details={"number": doc.number},
+        user_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(doc)
+    return _serialize_document(doc)
+
+
+@router.post("/{document_id}/pz/complete", response_model=DocumentResponse)
+def pz_complete_receipt(
+    document_id: int,
+    current_user: User = require_permission("documents", "OPERATIONAL"),
+    db: Session = Depends(get_db),
+):
+    doc = (
+        db.query(Document)
+        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .filter(Document.id == document_id, Document.type == DocumentTypeEnum.PZ)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Przyjecie PZ nie znalezione.")
+    if doc.status != DocumentStatusEnum.IN_PROGRESS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Zakonczyc mozna tylko przyjecie w trakcie (IN_PROGRESS).",
+        )
+
+    _confirm_pz(doc, db, current_user.id)
+    tasks_n = _pz_putaway_tasks(doc, db, current_user.id)
+    doc.status = DocumentStatusEnum.COMPLETED
+
+    log_action(
+        db, "PZ_COMPLETE", "Document", doc.id,
+        details={"number": doc.number, "putaway_tasks": tasks_n},
+        user_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(doc)
+    return _serialize_document(doc)
 
 
 @router.post("/mm", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -355,7 +546,7 @@ def create_mm(
     )
     db.commit()
     db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return _serialize_document(doc)
 
 
 @router.post("/rw", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -391,7 +582,7 @@ def create_rw(
     )
     db.commit()
     db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return _serialize_document(doc)
 
 
 @router.post("/{document_id}/confirm", response_model=DocumentResponse)
@@ -402,12 +593,17 @@ def confirm_document(
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nie znaleziony.")
+    if doc.type == DocumentTypeEnum.PZ:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Przyjec PZ nie zatwierdza sie tym endpointem — uzyj: POST .../pz/start, potem POST .../pz/complete.",
+        )
     if doc.status != DocumentStatusEnum.DRAFT:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -424,25 +620,37 @@ def confirm_document(
     handler(doc, db, current_user.id)
 
     doc.status = DocumentStatusEnum.CONFIRMED
+
+    # Dla MM i RW zadania dla magazyniera tworzą się od razu po zatwierdzeniu —
+    # nie trzeba oddzielnego kliknięcia "Generuj zadania".
+    tasks_created = 0
+    if doc.type in (DocumentTypeEnum.MM, DocumentTypeEnum.RW):
+        tasks_created = _create_tasks_for_document(doc, db, current_user.id)
+        doc.status = DocumentStatusEnum.IN_PROGRESS
+
     log_action(
         db, "CONFIRM", "Document", doc.id,
-        details={"type": doc.type.value, "number": doc.number},
+        details={
+            "type": doc.type.value,
+            "number": doc.number,
+            "tasks_created": tasks_created,
+        },
         user_id=current_user.id,
     )
     db.commit()
     db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return _serialize_document(doc)
 
 
 @router.post("/{document_id}/generate-tasks")
 def generate_tasks(
     document_id: int,
-    current_user: User = require_permission("taskManagement", "FULL"),
+    current_user: User = require_permission("documents", "OPERATIONAL"),
     db: Session = Depends(get_db),
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
@@ -454,28 +662,7 @@ def generate_tasks(
             detail="Zadania mozna generowac tylko dla zatwierdzonych dokumentow.",
         )
 
-    task_type = _TASK_TYPE_MAP.get(doc.type)
-    if not task_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Nieobslugiwany typ dokumentu: {doc.type}.",
-        )
-
-    tasks_created = 0
-    for item in doc.items:
-        db.add(
-            Task(
-                type=task_type,
-                status=TaskStatusEnum.NEW,
-                product_id=item.product_id,
-                from_location_id=doc.from_location_id,
-                to_location_id=doc.to_location_id,
-                quantity=item.quantity,
-                document_id=doc.id,
-                created_by_id=current_user.id,
-            )
-        )
-        tasks_created += 1
+    tasks_created = _create_tasks_for_document(doc, db, current_user.id)
 
     doc.status = DocumentStatusEnum.IN_PROGRESS
     log_action(
@@ -488,3 +675,52 @@ def generate_tasks(
         "message": f"Wygenerowano {tasks_created} zadan dla {doc.number}.",
         "tasks_created": tasks_created,
     }
+
+
+@router.post("/{document_id}/submit-to-tasks", response_model=DocumentResponse)
+def submit_document_to_tasks(
+    document_id: int,
+    current_user: User = require_permission("documents", "OPERATIONAL"),
+    db: Session = Depends(get_db),
+):
+    """
+    Mobilny, intuicyjny flow dla MM/RW:
+    DRAFT -> CONFIRMED -> IN_PROGRESS (+ zadania) jednym kliknieciem.
+    """
+    doc = (
+        db.query(Document)
+        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .filter(Document.id == document_id)
+        .first()
+    )
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nie znaleziony.")
+    if doc.type == DocumentTypeEnum.PZ:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dla PZ uzyj dedykowanego procesu: /pz/start i /pz/complete.",
+        )
+    if doc.status != DocumentStatusEnum.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Do zadan mozna przekazac tylko dokument w statusie DRAFT.",
+        )
+
+    handler = _CONFIRM_HANDLERS.get(doc.type)
+    if not handler:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Nieobslugiwany typ dokumentu: {doc.type}.",
+        )
+    handler(doc, db, current_user.id)
+    tasks_created = _create_tasks_for_document(doc, db, current_user.id)
+    doc.status = DocumentStatusEnum.IN_PROGRESS
+
+    log_action(
+        db, "SUBMIT_TO_TASKS", "Document", doc.id,
+        details={"type": doc.type.value, "number": doc.number, "tasks_created": tasks_created},
+        user_id=current_user.id,
+    )
+    db.commit()
+    db.refresh(doc)
+    return _serialize_document(doc)

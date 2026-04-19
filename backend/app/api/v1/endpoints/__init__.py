@@ -1,5 +1,6 @@
 from . import auth
 from . import users
+from . import suppliers
 from . import products
 from . import locations
 from . import stock
@@ -11,6 +12,7 @@ from . import reports
 __all__ = [
     "auth",
     "users",
+    "suppliers",
     "products",
     "locations",
     "stock",

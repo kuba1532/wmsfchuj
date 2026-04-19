@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.database import get_db
 from app.middleware.auth import require_permission
@@ -16,6 +16,14 @@ from app.services.audit import log_action
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
+def _task_eager_opts():
+    return (
+        joinedload(Task.product),
+        joinedload(Task.from_location),
+        joinedload(Task.to_location),
+    )
+
+
 @router.get("", response_model=PaginatedResponse[TaskResponse])
 def list_tasks(
     page: int = Query(1, ge=1),
@@ -25,7 +33,7 @@ def list_tasks(
     db: Session = Depends(get_db),
 ):
     count_query = db.query(func.count(Task.id))
-    data_query = db.query(Task)
+    data_query = db.query(Task).options(*_task_eager_opts())
 
     if current_user.role == RoleEnum.WORKER:
         count_query = count_query.filter(Task.assigned_to_id == current_user.id)

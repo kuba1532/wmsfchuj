@@ -64,7 +64,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    email: Optional[EmailStr] = None
+    """Email nie jest edytowalny — identyfikator konta pozostaje bez zmian."""
     first_name: Optional[str] = Field(None, max_length=100)
     last_name: Optional[str] = Field(None, max_length=100)
     role: Optional[str] = Field(None, pattern=r"^(ADMIN|MANAGER|FOREMAN|WORKER)$")
@@ -83,6 +83,7 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
+    sku: Optional[str] = Field(None, min_length=1, max_length=50, pattern=r"^[A-Za-z0-9\-]+$")
     name: Optional[str] = Field(None, max_length=255)
     ean: Optional[str] = Field(None, max_length=13, pattern=r"^\d{8,13}$")
     unit: Optional[str] = Field(None, max_length=20)
@@ -147,6 +148,7 @@ class StockResponse(BaseModel):
     location_id: int
     quantity: Decimal
     status: str
+    version: int
 
     model_config = {"from_attributes": True}
 
@@ -154,6 +156,15 @@ class StockResponse(BaseModel):
 class StockStatusChange(BaseModel):
     status: str = Field(..., pattern=r"^(AVAILABLE|BLOCKED)$")
     version: int = Field(..., description="Wersja rekordu (optimistic locking)")
+    quantity: Optional[Decimal] = Field(
+        None,
+        gt=0,
+        description=(
+            "Opcjonalna ilość do przełączenia statusu. "
+            "Jeśli mniejsza niż bieżąca — rekord zostaje rozdzielony: "
+            "pozostała ilość zachowuje stary status, a podana ilość trafia do nowego statusu."
+        ),
+    )
 
 
 # ── DOCUMENT ─────────────────────────────────────────────────────────────────
@@ -164,7 +175,7 @@ class DocumentItemCreate(BaseModel):
 
 
 class DocumentCreatePZ(BaseModel):
-    supplier: str = Field(..., min_length=1, max_length=255)
+    supplier_id: int = Field(..., gt=0, description="Dostawca z katalogu — tylko jego produkty")
     items: list[DocumentItemCreate] = Field(..., min_length=1)
 
 
@@ -186,17 +197,39 @@ class DocumentCreateRW(BaseModel):
     items: list[DocumentItemCreate] = Field(..., min_length=1)
 
 
+class DocumentItemResponse(BaseModel):
+    id: int
+    product_id: int
+    quantity: Decimal
+    product: Optional[ProductResponse] = None
+
+    model_config = {"from_attributes": True}
+
+
 class DocumentResponse(BaseModel):
     id: int
     number: str
     type: str
     status: str
-    supplier: Optional[str]
-    from_location_id: Optional[int]
-    to_location_id: Optional[int]
-    recipient: Optional[str]
+    supplier_id: Optional[int] = None
+    supplier: Optional[str] = None
+    from_location_id: Optional[int] = None
+    to_location_id: Optional[int] = None
+    from_location_code: Optional[str] = None
+    to_location_code: Optional[str] = None
+    recipient: Optional[str] = None
     created_by_id: int
     created_at: datetime
+    items: list[DocumentItemResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class SupplierResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    is_active: bool
 
     model_config = {"from_attributes": True}
 
@@ -216,15 +249,18 @@ class TaskResponse(BaseModel):
     id: int
     type: str
     status: str
-    product_id: Optional[int]
-    from_location_id: Optional[int]
-    to_location_id: Optional[int]
+    product_id: Optional[int] = None
+    from_location_id: Optional[int] = None
+    to_location_id: Optional[int] = None
     quantity: Decimal
-    assigned_to_id: Optional[int]
-    document_id: Optional[int]
+    assigned_to_id: Optional[int] = None
+    document_id: Optional[int] = None
     created_at: datetime
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    product: Optional[ProductResponse] = None
+    from_location: Optional[LocationResponse] = None
+    to_location: Optional[LocationResponse] = None
 
     model_config = {"from_attributes": True}
 
@@ -242,15 +278,30 @@ class InventoryCreate(BaseModel):
     items: list[InventoryItemCreate] = Field(..., min_length=1)
 
 
+class InventoryItemResponse(BaseModel):
+    id: int
+    location_id: int
+    product_id: int
+    system_quantity: Decimal
+    actual_quantity: Decimal
+    difference: Decimal
+    location_code: Optional[str] = None
+    product_sku: Optional[str] = None
+    product_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class InventoryResponse(BaseModel):
     id: int
     number: str
     type: str
     status: str
     counted_by_id: int
-    approved_by_id: Optional[int]
+    approved_by_id: Optional[int] = None
     created_at: datetime
-    approved_at: Optional[datetime]
+    approved_at: Optional[datetime] = None
+    items: list[InventoryItemResponse] = []
 
     model_config = {"from_attributes": True}
 

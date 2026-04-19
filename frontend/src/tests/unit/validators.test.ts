@@ -44,8 +44,12 @@ describe('Product Schema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('odrzuca SKU w złym formacie', () => {
-    const result = productSchema.safeParse({ sku: 'ABC', name: 'Śruba', unit: 'szt' });
+  it('odrzuca SKU dłuższe niż 50 znaków', () => {
+    const result = productSchema.safeParse({
+      sku: 'X'.repeat(51),
+      name: 'Śruba',
+      unit: 'szt',
+    });
     expect(result.success).toBe(false);
   });
 

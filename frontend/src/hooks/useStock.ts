@@ -9,6 +9,7 @@ export interface StockItem {
   location_id: number;
   quantity: number;
   status: StockStatus;
+  version?: number;
   product?: { id: number; sku: string; name: string; unit: string };
   location?: { id: number; code: string; type: string };
 }
@@ -25,7 +26,12 @@ interface UseStockReturn {
   total: number;
   isLoading: boolean;
   refresh: () => void;
-  changeStatus: (id: number, status: StockStatus) => Promise<void>;
+  changeStatus: (
+    id: number,
+    status: StockStatus,
+    version?: number,
+    quantity?: number,
+  ) => Promise<void>;
 }
 
 export function useStock({
@@ -64,12 +70,24 @@ export function useStock({
   }, [fetchStock]);
 
   const changeStatus = useCallback(
-    async (id: number, status: StockStatus) => {
-      await apiClient.patch(`/stock/${id}/status`, { status });
-      showSuccess(`Status zmieniony na "${status}".`);
+    async (id: number, status: StockStatus, version?: number, quantity?: number) => {
+      const current = stock.find((s) => s.id === id);
+      const payloadVersion = version ?? current?.version ?? 1;
+      const payload: { status: StockStatus; version: number; quantity?: number } = {
+        status,
+        version: payloadVersion,
+      };
+      if (quantity !== undefined && quantity > 0) {
+        payload.quantity = quantity;
+      }
+      await apiClient.patch(`/stock/${id}/status`, payload);
+      const qtyInfo = quantity && current && quantity < Number(current.quantity)
+        ? ` (${quantity} z ${current.quantity})`
+        : '';
+      showSuccess(`Status zmieniony na "${status}"${qtyInfo}.`);
       fetchStock();
     },
-    [fetchStock],
+    [fetchStock, stock],
   );
 
   return { stock, total, isLoading, refresh: fetchStock, changeStatus };

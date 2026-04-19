@@ -34,6 +34,7 @@ import {
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
 import FormModal from '@/components/Modal/FormModal';
+import PageHeader from '@/components/Table/PageHeader';
 import { generateInventoryPDF } from '@/utils/pdfGenerator';
 import apiClient from '@/api/client';
 
@@ -41,6 +42,7 @@ interface StockRow {
   stock_id: number;
   location_code: string;
   location_id: number;
+  product_id: number;
   product_sku: string;
   product_name: string;
   system_quantity: number;
@@ -56,7 +58,11 @@ interface InventoryDoc {
 
 interface InventoryDocItem {
   id: number;
-  stock_id: number;
+  location_id: number;
+  product_id: number;
+  location_code?: string;
+  product_sku?: string;
+  product_name?: string;
   system_quantity: number;
   actual_quantity: number;
   difference: number;
@@ -77,7 +83,7 @@ const InventoryPage = () => {
   const [stockRows, setStockRows] = useState<StockRow[]>([]);
   const [selectedStockIds, setSelectedStockIds] = useState<number[]>([]);
   const [actualQuantities, setActualQuantities] = useState<Record<number, string>>({});
-  const [invType, setInvType] = useState('Pełna');
+  const [invType, setInvType] = useState<'FULL' | 'PARTIAL'>('FULL');
 
   const { canApproveInventory, canCountInventory } = usePermissions();
   const { showSuccess, showError } = useNotification();
@@ -117,7 +123,7 @@ const InventoryPage = () => {
   useEffect(() => {
     if (!createOpen) return;
     apiClient
-      .get('/stock?page=1&page_size=200&status_filter=AVAILABLE')
+      .get('/stock?page=1&page_size=100&status_filter=AVAILABLE')
       .then((res) => {
         const rows: StockRow[] = (res.data.items ?? []).map(
           (s: {
@@ -131,6 +137,7 @@ const InventoryPage = () => {
             stock_id: s.id,
             location_code: s.location?.code ?? `#${s.location_id}`,
             location_id: s.location_id,
+            product_id: s.product_id,
             product_sku: s.product?.sku ?? `#${s.product_id}`,
             product_name: s.product?.name ?? '',
             system_quantity: s.quantity,
@@ -166,7 +173,8 @@ const InventoryPage = () => {
         const row = stockRows.find((r) => r.stock_id === stockId)!;
         const actual = Number(actualQuantities[stockId]);
         return {
-          stock_id: stockId,
+          product_id: row.product_id,
+          location_id: row.location_id,
           actual_quantity: isNaN(actual) ? row.system_quantity : actual,
         };
       });
@@ -176,7 +184,7 @@ const InventoryPage = () => {
       setCreateOpen(false);
       setSelectedStockIds([]);
       setActualQuantities({});
-      setInvType('Pełna');
+      setInvType('FULL');
       fetchDocuments(debouncedSearch);
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
@@ -273,20 +281,17 @@ const InventoryPage = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Inwentaryzacja
-        </Typography>
-        {canCountInventory() && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Nowa inwentaryzacja
-          </Button>
-        )}
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Łącznie: {total}
-      </Typography>
+      <PageHeader
+        title="Inwentaryzacja"
+        subtitle={`Łącznie dokumentów: ${total}`}
+        action={
+          canCountInventory() ? (
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+              Nowa inwentaryzacja
+            </Button>
+          ) : null
+        }
+      />
 
       <TextField
         placeholder="Szukaj po numerze..."
@@ -341,12 +346,12 @@ const InventoryPage = () => {
           size="small"
           fullWidth
           value={invType}
-          onChange={(e) => setInvType(e.target.value)}
+          onChange={(e) => setInvType(e.target.value as 'FULL' | 'PARTIAL')}
           slotProps={{ select: { native: true } }}
           sx={{ mb: 2 }}
         >
-          <option value="Pełna">Pełna</option>
-          <option value="Wyrywkowa">Wyrywkowa</option>
+          <option value="FULL">Pełna</option>
+          <option value="PARTIAL">Wyrywkowa</option>
         </TextField>
 
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -513,7 +518,7 @@ const InventoryPage = () => {
               <Box
                 sx={{
                   display: 'grid',
-                  gridTemplateColumns: '80px 80px 1fr 100px 100px 100px',
+                  gridTemplateColumns: '120px 100px 1fr 100px 100px 100px',
                   gap: 1,
                   px: 1.5,
                   py: 1,
@@ -521,7 +526,7 @@ const InventoryPage = () => {
                   borderRadius: 2,
                 }}
               >
-                {['Stock ID', 'Lok. ID', 'Produkt', 'Systemowy', 'Faktyczny', 'Różnica'].map(
+                {['Lokalizacja', 'SKU', 'Produkt', 'Systemowy', 'Faktyczny', 'Różnica'].map(
                   (h) => (
                     <Typography key={h} variant="caption" fontWeight={700}>
                       {h}
@@ -535,7 +540,7 @@ const InventoryPage = () => {
                   key={item.id}
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '80px 80px 1fr 100px 100px 100px',
+                    gridTemplateColumns: '120px 100px 1fr 100px 100px 100px',
                     gap: 1,
                     px: 1.5,
                     py: 1,
@@ -545,10 +550,12 @@ const InventoryPage = () => {
                   }}
                 >
                   <Typography variant="body2" fontWeight={600}>
-                    #{item.stock_id}
+                    {item.location_code ?? `#${item.location_id}`}
                   </Typography>
-                  <Typography variant="body2">—</Typography>
-                  <Typography variant="body2">—</Typography>
+                  <Typography variant="body2">
+                    {item.product_sku ?? `#${item.product_id}`}
+                  </Typography>
+                  <Typography variant="body2">{item.product_name ?? '—'}</Typography>
                   <Typography variant="body2" sx={{ textAlign: 'right' }}>
                     {item.system_quantity}
                   </Typography>
@@ -585,9 +592,9 @@ const InventoryPage = () => {
                 'Pełna',
                 DOCUMENT_STATUS_LABELS[selectedDoc.status],
                 selectedDoc.items?.map((i) => ({
-                  locationCode: `#${i.stock_id}`,
-                  productName: '—',
-                  sku: '—',
+                  locationCode: i.location_code ?? `#${i.location_id}`,
+                  productName: i.product_name ?? '—',
+                  sku: i.product_sku ?? '—',
                   systemQuantity: i.system_quantity,
                   actualQuantity: i.actual_quantity,
                   difference: i.difference,

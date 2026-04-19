@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Add, Search, Visibility, Close, Download, Delete } from '@mui/icons-material';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   DocumentStatus,
@@ -27,9 +27,9 @@ import {
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
 import { documentPZSchema, type DocumentPZFormData } from '@/utils/validators';
-import FormField from '@/components/Form/FormField';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
+import PageHeader from '@/components/Table/PageHeader';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
 import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
@@ -41,6 +41,12 @@ interface ProductOption {
   name: string;
 }
 
+interface SupplierOption {
+  id: number;
+  code: string;
+  name: string;
+}
+
 const DocumentsPZPage = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -48,11 +54,12 @@ const DocumentsPZPage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { canCreate } = usePermissions();
   const { showError } = useNotification();
 
-  const { documents, total, isLoading, createPZ, confirmDocument, generateTasks } = useDocuments({
+  const { documents, total, isLoading, createPZ, pzStart, pzComplete, generateTasks } = useDocuments({
     docType: 'PZ',
     search: debouncedSearch,
   });
@@ -65,19 +72,30 @@ const DocumentsPZPage = () => {
     formState: { errors },
   } = useForm<DocumentPZFormData>({
     resolver: zodResolver(documentPZSchema),
-    defaultValues: { supplier: '', items: [{ productId: 0, quantity: 1 }] },
+    defaultValues: { supplierId: 0, items: [{ productId: 0, quantity: 1 }] },
   });
 
-  const { fields, append, remove } = useFieldArray({ control, name: 'items' });
+  const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' });
+  const supplierIdWatched = useWatch({ control, name: 'supplierId' });
 
-  // Pobierz produkty przy otwarciu modalu
   useEffect(() => {
     if (!createOpen) return;
     apiClient
-      .get('/products?page=1&page_size=100')
+      .get('/suppliers?page=1&page_size=100')
+      .then((res) => setSuppliers(res.data.items ?? []))
+      .catch(() => showError('Nie udało się pobrać dostawców.'));
+  }, [createOpen, showError]);
+
+  useEffect(() => {
+    if (!createOpen || !supplierIdWatched) {
+      setProducts([]);
+      return;
+    }
+    apiClient
+      .get(`/products?page=1&page_size=100&supplier_id=${supplierIdWatched}`)
       .then((res) => setProducts(res.data.items ?? []))
-      .catch(() => showError('Nie udało się pobrać produktów.'));
-  }, [createOpen]);
+      .catch(() => showError('Nie udało się pobrać produktów dla dostawcy.'));
+  }, [createOpen, supplierIdWatched, showError]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -91,11 +109,11 @@ const DocumentsPZPage = () => {
     setIsSubmitting(true);
     try {
       await createPZ({
-        supplier: data.supplier,
+        supplier_id: data.supplierId,
         items: data.items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
       });
       setCreateOpen(false);
-      reset({ supplier: '', items: [{ productId: 0, quantity: 1 }] });
+      reset({ supplierId: 0, items: [{ productId: 0, quantity: 1 }] });
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
@@ -105,15 +123,27 @@ const DocumentsPZPage = () => {
     }
   };
 
-  const handleConfirm = async (id: number) => {
+  const handlePzStart = async (id: number) => {
     try {
-      await confirmDocument(id);
+      await pzStart(id);
       setDetailOpen(false);
       setSelectedDoc(null);
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
-      showError(detail ?? 'Nie udało się zatwierdzić dokumentu.');
+      showError(detail ?? 'Nie udało się rozpocząć przyjęcia.');
+    }
+  };
+
+  const handlePzComplete = async (id: number) => {
+    try {
+      await pzComplete(id);
+      setDetailOpen(false);
+      setSelectedDoc(null);
+    } catch (error: unknown) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
+        ?.detail;
+      showError(detail ?? 'Nie udało się zakończyć przyjęcia.');
     }
   };
 
@@ -186,20 +216,17 @@ const DocumentsPZPage = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" fontWeight={700}>
-          Przyjęcia zewnętrzne (PZ)
-        </Typography>
-        {canCreate('documents') && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
-            Nowe przyjęcie
-          </Button>
-        )}
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Łącznie: {total}
-      </Typography>
+      <PageHeader
+        title="Przyjęcia zewnętrzne (PZ)"
+        subtitle={`Łącznie dokumentów: ${total}`}
+        action={
+          canCreate('documents') ? (
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateOpen(true)}>
+              Nowe przyjęcie
+            </Button>
+          ) : null
+        }
+      />
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <TextField
@@ -230,7 +257,10 @@ const DocumentsPZPage = () => {
           rows={documents}
           columns={columns}
           pageSizeOptions={[10, 25, 50]}
-          initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
+          initialState={{
+            pagination: { paginationModel: { pageSize: 10 } },
+            sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
+          }}
           disableRowSelectionOnClick
           autoHeight
           sx={{ borderRadius: 2 }}
@@ -241,7 +271,7 @@ const DocumentsPZPage = () => {
         open={createOpen}
         onClose={() => {
           setCreateOpen(false);
-          reset({ supplier: '', items: [{ productId: 0, quantity: 1 }] });
+          reset({ supplierId: 0, items: [{ productId: 0, quantity: 1 }] });
         }}
         onSubmit={handleSubmit(handleCreate)}
         title="Nowe przyjęcie zewnętrzne (PZ)"
@@ -249,11 +279,33 @@ const DocumentsPZPage = () => {
         submitLabel="Utwórz dokument"
         isSubmitting={isSubmitting}
       >
-        <FormField
-          label="Dostawca"
-          placeholder="np. Hurtownia ABC"
-          error={errors.supplier}
-          {...register('supplier')}
+        <Controller
+          name="supplierId"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              select
+              label="Dostawca (z katalogu)"
+              fullWidth
+              size="small"
+              error={!!errors.supplierId}
+              helperText={errors.supplierId?.message ?? 'Tylko produkty przypisane do dostawcy'}
+              value={field.value || ''}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                field.onChange(Number.isFinite(v) ? v : 0);
+                replace([{ productId: 0, quantity: 1 }]);
+              }}
+              slotProps={{ select: { native: true } }}
+            >
+              <option value={0}>— Wybierz dostawcę —</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.code} — {s.name}
+                </option>
+              ))}
+            </TextField>
+          )}
         />
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
@@ -367,6 +419,54 @@ const DocumentsPZPage = () => {
                   }}
                 />
               </Box>
+
+              <Divider />
+              <Typography variant="subtitle2" fontWeight={600}>
+                Pozycje dokumentu ({selectedDoc.items?.length ?? 0})
+              </Typography>
+              {(selectedDoc.items ?? []).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Brak pozycji.
+                </Typography>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '120px 1fr 100px',
+                    gap: 1,
+                    px: 1.5,
+                    py: 1,
+                    bgcolor: 'action.hover',
+                    borderRadius: 2,
+                  }}
+                >
+                  {['SKU', 'Produkt', 'Ilość'].map((h) => (
+                    <Typography key={h} variant="caption" fontWeight={700}>
+                      {h}
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+              {selectedDoc.items?.map((it) => (
+                <Box
+                  key={it.id}
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '120px 1fr 100px',
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.5,
+                  }}
+                >
+                  <Typography variant="body2" fontWeight={600}>
+                    {it.product?.sku ?? `#${it.product_id}`}
+                  </Typography>
+                  <Typography variant="body2">{it.product?.name ?? '—'}</Typography>
+                  <Typography variant="body2" sx={{ textAlign: 'right' }}>
+                    {it.quantity} {it.product?.unit ?? ''}
+                  </Typography>
+                </Box>
+              ))}
             </Box>
           )}
         </DialogContent>
@@ -374,10 +474,19 @@ const DocumentsPZPage = () => {
           {selectedDoc?.status === DocumentStatus.DRAFT && (
             <Button
               variant="contained"
-              color="warning"
-              onClick={() => handleConfirm(selectedDoc.id)}
+              color="primary"
+              onClick={() => handlePzStart(selectedDoc.id)}
             >
-              Zatwierdź
+              Rozpocznij przyjęcie
+            </Button>
+          )}
+          {selectedDoc?.status === DocumentStatus.IN_PROGRESS && (
+            <Button
+              variant="contained"
+              color="success"
+              onClick={() => handlePzComplete(selectedDoc.id)}
+            >
+              Zakończ przyjęcie
             </Button>
           )}
           {selectedDoc?.status === DocumentStatus.CONFIRMED && (
@@ -386,7 +495,7 @@ const DocumentsPZPage = () => {
               color="success"
               onClick={() => handleGenerateTasks(selectedDoc.id)}
             >
-              Generuj zadania
+              Generuj zadania (dokument archiwalny)
             </Button>
           )}
           <Button
@@ -405,7 +514,12 @@ const DocumentsPZPage = () => {
                   },
                   { label: 'Dostawca', value: selectedDoc.supplier ?? '—' },
                 ],
-                items: [],
+                items:
+                  selectedDoc.items?.map((it) => ({
+                    sku: it.product?.sku ?? `#${it.product_id}`,
+                    product: it.product?.name ?? '—',
+                    quantity: it.quantity,
+                  })) ?? [],
                 status: DOCUMENT_STATUS_LABELS[selectedDoc.status],
               });
             }}
