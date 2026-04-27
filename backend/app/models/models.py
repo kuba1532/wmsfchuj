@@ -92,6 +92,8 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)
+    must_set_password = Column(Boolean, default=False, nullable=False)
+    password_set_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     version = Column(Integer, default=1, nullable=False)
@@ -102,6 +104,11 @@ class User(Base):
         foreign_keys="Task.assigned_to_id",
     )
     created_documents = relationship("Document", back_populates="created_by_user")
+    password_setup_tokens = relationship(
+        "PasswordSetupToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class Product(Base):
@@ -331,3 +338,16 @@ class AuditLog(Base):
         Index("ix_audit_entity", "entity_type", "entity_id"),
         Index("ix_audit_user", "user_id"),
     )
+
+
+class PasswordSetupToken(Base):
+    __tablename__ = "password_setup_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(255), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="password_setup_tokens")

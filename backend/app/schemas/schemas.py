@@ -22,6 +22,7 @@ class UserResponse(BaseModel):
     last_name: str
     role: str
     is_active: bool
+    must_set_password: bool
     created_at: datetime
     version: int
 
@@ -53,6 +54,20 @@ class ChangePasswordRequest(BaseModel):
         return v
 
 
+class SetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=32, max_length=1024)
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Haslo musi zawierac co najmniej jedna litere.")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Haslo musi zawierac co najmniej jedna cyfre.")
+        return v
+
+
 # ── USER ─────────────────────────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
@@ -60,7 +75,11 @@ class UserCreate(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     role: str = Field(..., pattern=r"^(ADMIN|MANAGER|FOREMAN|WORKER)$")
-    password: str = Field(..., min_length=8)
+
+
+class UserCreateResponse(BaseModel):
+    user: UserResponse
+    setup_password_url: str
 
 
 class UserUpdate(BaseModel):

@@ -7,6 +7,7 @@ import RoleGuard from '@/app/guards/RoleGuard';
 import ResponsiveLayout from '@/app/layout/ResponsiveLayout';
 
 import LoginPage from '@/pages/Login/LoginPage';
+import SetPasswordPage from '@/pages/SetPassword/SetPasswordPage';
 import DashboardPage from '@/pages/Dashboard/DashboardPage';
 import ProductsPage from '@/pages/Products/ProductsPage';
 import LocationsPage from '@/pages/Locations/LocationsPage';
@@ -27,6 +28,7 @@ import SettingsPage from '@/pages/Settings/SettingsPage';
 const router = createBrowserRouter([
   // Public
   { path: '/login', element: <LoginPage /> },
+  { path: '/set-password', element: <SetPasswordPage /> },
 
   // Protected
   {

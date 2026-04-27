@@ -1,4 +1,6 @@
 import secrets
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -105,3 +107,11 @@ def generate_login_code(existing_codes: set[str]) -> str:
         code = f"{secrets.randbelow(100000):05d}"
         if code not in existing_codes:
             return code
+
+
+def hash_setup_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def verify_setup_token(token: str, token_hash: str) -> bool:
+    return hmac.compare_digest(hash_setup_token(token), token_hash)

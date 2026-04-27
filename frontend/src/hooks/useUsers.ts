@@ -15,6 +15,11 @@ export interface UserItem {
   version: number;
 }
 
+export interface UserCreateResult {
+  user: UserItem;
+  setup_password_url: string;
+}
+
 interface UseUsersOptions {
   search?: string;
   page?: number;
@@ -27,7 +32,7 @@ interface UseUsersReturn {
   pages: number;
   isLoading: boolean;
   refresh: () => void;
-  createUser: (data: UserCreateData) => Promise<UserItem>;
+  createUser: (data: UserCreateData) => Promise<UserCreateResult>;
   updateUser: (id: number, data: UserUpdateData) => Promise<void>;
   toggleActive: (user: UserItem) => Promise<void>;
 }
@@ -37,7 +42,6 @@ export interface UserCreateData {
   first_name: string;
   last_name: string;
   role: string;
-  password: string;
 }
 
 export interface UserUpdateData {
@@ -84,13 +88,14 @@ export function useUsers({
   }, [fetchUsers]);
 
   const createUser = useCallback(
-    async (data: UserCreateData): Promise<UserItem> => {
+    async (data: UserCreateData): Promise<UserCreateResult> => {
       const response = await apiClient.post('/users', data);
+      const result: UserCreateResult = response.data;
       showSuccess(
-        `Konto dla ${data.first_name} ${data.last_name} zostało utworzone. Login: ${response.data.login_code}.`,
+        `Konto dla ${data.first_name} ${data.last_name} utworzone. Login: ${result.user.login_code}.`,
       );
       fetchUsers();
-      return response.data;
+      return result;
     },
     [fetchUsers],
   );

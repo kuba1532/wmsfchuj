@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import (
     verify_password,
+    hash_setup_token,
     hash_password,
     create_access_token,
     create_refresh_token,
@@ -14,12 +15,13 @@ from app.core.security import (
 )
 from app.db.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.models import User, RoleEnum
+from app.models.models import User, RoleEnum, PasswordSetupToken
 from app.schemas.schemas import (
     LoginRequest,
     TokenResponse,
     RefreshRequest,
     ChangePasswordRequest,
+    SetPasswordRequest,
     UserResponse,
 )
 from app.services.audit import log_action
@@ -55,6 +57,11 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     # Nieaktywne konto — ten sam 401
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
+    if user.must_set_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ustaw haslo przez link aktywacyjny wyslany na e-mail.",
+        )
 
     user.failed_login_attempts = 0
     user.locked_until = None
@@ -122,10 +129,50 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
     current_user.password_hash = hash_password(data.new_password)
+    current_user.must_set_password = False
+    current_user.password_set_at = datetime.now(timezone.utc)
     log_action(db, "PASSWORD_CHANGED", "User", current_user.id, user_id=current_user.id)
     db.commit()
 
     return {"message": "Haslo zostalo zmienione."}
+
+
+@router.post("/set-password")
+def set_password(
+    data: SetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    token_row = (
+        db.query(PasswordSetupToken)
+        .filter(
+            PasswordSetupToken.token_hash == hash_setup_token(data.token),
+            PasswordSetupToken.used_at.is_(None),
+            PasswordSetupToken.expires_at > now,
+        )
+        .first()
+    )
+    if token_row is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Link do ustawienia hasla jest nieprawidlowy lub wygasl.")
+
+    user = db.query(User).filter(User.id == token_row.user_id).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Konto jest nieaktywne lub nie istnieje.")
+
+    valid, msg = validate_password_policy(data.new_password)
+    if not valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+
+    user.password_hash = hash_password(data.new_password)
+    user.must_set_password = False
+    user.password_set_at = now
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    token_row.used_at = now
+
+    log_action(db, "PASSWORD_SET_FROM_EMAIL", "User", user.id, user_id=user.id)
+    db.commit()
+    return {"message": "Haslo zostalo ustawione. Mozesz sie zalogowac."}
 
 
 @router.post("/unlock/{user_id}")

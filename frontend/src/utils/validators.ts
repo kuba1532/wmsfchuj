@@ -102,15 +102,24 @@ export const userSchema = userEditSchema.extend({
   password: z.string().optional(),
 });
 
-// Tworzenie konta: email + hasło wymagane
+// Tworzenie konta: admin podaje dane i role, haslo ustawia uzytkownik z linku e-mail.
 export const userCreateSchema = userEditSchema.extend({
   email: z.string().email('Podaj prawidłowy adres email'),
-  password: z
-    .string()
-    .min(8, 'Hasło musi mieć minimum 8 znaków')
-    .regex(/[a-zA-Z]/, 'Hasło musi zawierać co najmniej jedną literę')
-    .regex(/\d/, 'Hasło musi zawierać co najmniej jedną cyfrę'),
 });
+
+export const setPasswordFromLinkSchema = z
+  .object({
+    newPassword: z
+      .string()
+      .min(8, 'Hasło musi mieć minimum 8 znaków')
+      .regex(/[a-zA-Z]/, 'Hasło musi zawierać co najmniej jedną literę')
+      .regex(/\d/, 'Hasło musi zawierać co najmniej jedną cyfrę'),
+    confirmPassword: z.string().min(1, 'Potwierdź nowe hasło'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Hasła nie są identyczne',
+    path: ['confirmPassword'],
+  });
 
 export const changePasswordSchema = z
   .object({
@@ -138,3 +147,4 @@ export type UserFormData = z.infer<typeof userCreateSchema>;
 export type UserEditFormData = z.infer<typeof userEditSchema>;
 export type UserCreateFormData = z.infer<typeof userCreateSchema>;
 export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;
+export type SetPasswordFromLinkFormData = z.infer<typeof setPasswordFromLinkSchema>;

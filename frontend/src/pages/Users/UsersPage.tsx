@@ -9,6 +9,7 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PersonAdd, Search, Lock, LockOpen, Edit } from '@mui/icons-material';
@@ -51,6 +52,7 @@ const UsersPage = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastSetupLink, setLastSetupLink] = useState<string>('');
   const { showError } = useNotification();
 
   const { users, total, isLoading, createUser, updateUser, toggleActive } = useUsers({
@@ -60,7 +62,7 @@ const UsersPage = () => {
 
   const createForm = useForm<UserCreateFormData>({
     resolver: zodResolver(userCreateSchema),
-    defaultValues: { email: '', firstName: '', lastName: '', role: '', password: '' },
+    defaultValues: { email: '', firstName: '', lastName: '', role: '' },
   });
 
   const editForm = useForm<UserEditFormData>({
@@ -78,13 +80,13 @@ const UsersPage = () => {
   const handleCreate = async (data: UserCreateFormData) => {
     setIsSubmitting(true);
     try {
-      await createUser({
+      const result = await createUser({
         email: data.email,
         first_name: data.firstName,
         last_name: data.lastName,
         role: data.role,
-        password: data.password ?? '',
       });
+      setLastSetupLink(result.setup_password_url);
       setCreateOpen(false);
       createForm.reset();
     } catch (error: unknown) {
@@ -226,12 +228,6 @@ const UsersPage = () => {
         error={createForm.formState.errors.email}
         {...createForm.register('email')}
       />
-      <FormField
-        label="Hasło"
-        type="password"
-        error={createForm.formState.errors.password}
-        {...createForm.register('password')}
-      />
       <Controller
         name="role"
         control={createForm.control}
@@ -339,9 +335,18 @@ const UsersPage = () => {
       >
         {renderCreateForm()}
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          Login (5-cyfrowy kod) zostanie wygenerowany automatycznie przez system.
+          Login (5-cyfrowy kod) zostanie wygenerowany automatycznie. Użytkownik ustawi hasło z linku wysłanego e-mailem.
         </Typography>
       </FormModal>
+
+      {lastSetupLink && (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Ostatni link aktywacyjny (dev/fallback):{' '}
+          <a href={lastSetupLink} target="_blank" rel="noreferrer">
+            {lastSetupLink}
+          </a>
+        </Alert>
+      )}
 
       <FormModal
         open={editOpen}

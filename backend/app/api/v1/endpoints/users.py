@@ -1,16 +1,22 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.database import get_db
 from app.core.security import hash_password, generate_login_code
 from app.middleware.auth import require_permission
 from app.models.models import User, RoleEnum
-from app.schemas.schemas import UserCreate, UserUpdate, UserResponse, PaginatedResponse
+from app.schemas.schemas import UserCreate, UserUpdate, UserResponse, UserCreateResponse, PaginatedResponse
 from app.services.audit import log_action
+from app.services.mailer import send_account_setup_email
+from app.services.password_setup import issue_password_setup_token
 from app.services.versioning import check_version
 
 router = APIRouter(prefix="/users", tags=["Users"])
+settings = get_settings()
 
 
 @router.get("", response_model=PaginatedResponse[UserResponse])
@@ -47,7 +53,7 @@ def list_users(
     )
 
 
-@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     data: UserCreate,
     current_user: User = require_permission("users", "FULL"),
@@ -62,24 +68,30 @@ def create_user(
     existing_codes = {code for (code,) in db.query(User.login_code).all()}
     login_code = generate_login_code(existing_codes)
 
+    # Konto tworzymy bez znanego hasla docelowego; uzytkownik ustawi je z linku.
+    provisional_password = hash_password(secrets.token_urlsafe(24))
     user = User(
         login_code=login_code,
         email=data.email,
-        password_hash=hash_password(data.password),
+        password_hash=provisional_password,
         first_name=data.first_name,
         last_name=data.last_name,
         role=RoleEnum(data.role),
+        must_set_password=True,
     )
     db.add(user)
     db.flush()
+    raw_token = issue_password_setup_token(db, user)
+    setup_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/set-password?token={raw_token}"
+    send_account_setup_email(to_email=user.email, login_code=user.login_code, setup_url=setup_url)
     log_action(
         db, "CREATE", "User", user.id,
-        details={"email": data.email, "role": data.role, "login_code": login_code},
+        details={"email": data.email, "role": data.role, "login_code": login_code, "setup_mail_sent": True},
         user_id=current_user.id,
     )
     db.commit()
     db.refresh(user)
-    return UserResponse.model_validate(user)
+    return UserCreateResponse(user=UserResponse.model_validate(user), setup_password_url=setup_url)
 
 
 @router.get("/{user_id}", response_model=UserResponse)

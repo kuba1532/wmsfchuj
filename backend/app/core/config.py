@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     DEMO_WORKER_EMAIL: str = "operator@wms.pl"
     DEMO_WORKER_PASSWORD: str = "Demo1234"
 
+    # Frontend URL used in e-mail links
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+
+    # SMTP (account setup mails)
+    SMTP_ENABLED: bool = False
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USE_TLS: bool = False
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "no-reply@wms.pl"
+
     @field_validator("JWT_SECRET_KEY")
     @classmethod
     def jwt_secret_must_be_strong(cls, v: str) -> str:
