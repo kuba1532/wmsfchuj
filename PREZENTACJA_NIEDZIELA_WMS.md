@@ -1,4 +1,4 @@
-# Prezentacja na niedzielę — WMS (szkic gotowy)
+# Prezentacja na niedzielę — WMS (wersja statusowa)
 
 ## Slajd 1 — Agenda
 
@@ -19,12 +19,13 @@
   - aplikacja mobilna (operacje na hali).
 - Cel biznesowy: mniej błędów, szybsza realizacja, lepsza kontrola.
 
-## Slajd 3 — Co już działa (dowody)
+## Slajd 3 — Co działa (status na dziś)
 
 - Backend + frontend + worker mobilny połączone i przetestowane.
-- Scenariusze dokumentów: PZ/MM/RW.
-- Zadania i stany magazynowe aktualizują się po operacjach.
+- Kluczowe scenariusze dokumentów działają: PZ/MM/RW.
+- Zadania i stany magazynowe odświeżają się po operacjach.
 - Role i uprawnienia działają (ADMIN/FOREMAN/WORKER).
+- Test smoke API: 18/18 OK, brak błędów krytycznych.
 
 > Wstaw screeny z `e2e_tests/screens/`.
 
@@ -60,32 +61,38 @@
 - Etap 4: testy E2E, role, raporty
 - Etap 5: przygotowanie release/demo
 
-## Slajd 8 — Ryzyka i plan
+## Slajd 8 — Co nie działa / co jest niedomknięte
 
-- Ryzyka techniczne i komunikacyjne (plik: `RYZYKA_I_PLAN_MONITOROWANIA_WMS.md`)
-- Plan monitorowania i testów
-- Kryteria GO/NO-GO
+- Wysyłka maili "must-have" (F15: link do ustawienia hasła) - niedomknięta.
+- i18n (PL/EN) - częściowo, wymaga domknięcia warstwy słowników.
+- TestFlight iOS - instrukcja gotowa, pipeline release do dokończenia.
+- HTTPS produkcyjne - do konfiguracji na środowisku wdrożeniowym.
+- Backupy/retencja logów/benchmarki wydajności - do domknięcia operacyjnie.
 
-## Slajd 9 — DO ZROBIENIA (roadmapa)
+## Slajd 9 — Ryzyka i plan monitorowania
+
+- Ryzyka techniczne i komunikacyjne (plik: `RYZYKA_I_PLAN_MONITOROWANIA_WMS.md`).
+- Plan monitorowania i testów (API + UI + UAT po rolach).
+- Kryteria GO/NO-GO i checklista przed release.
+
+## Slajd 10 — DO ZROBIENIA (roadmapa)
 
 ### Priorytet P1 (najbliżej produkcji)
-- Skaner na mobilce (dalsze dopracowanie UX)
-- Łączenie flow Picking + Move
-- Auto-refresh i aktualizacja po odpowiedziach
-- Trzymanie sesji, standaryzacja lokalizacji
-- Rezerwacje ilości i kody lokalizacji
+- Domknięcie F15: wysyłka e-mail + link ustawienia hasła.
+- UAT z użytkownikiem końcowym i poprawki użyteczności.
+- Dopięcie pipeline TestFlight i checklisty release.
+- Dopracowanie i18n i spójności UI (font/nazewnictwo).
 
 ### Priorytet P2
-- Tłumaczenia (i18n)
-- TestFlight i dystrybucja
-- Wysyłka maili „must-have”
-- Podpowiedzi i ergonomia formularzy
+- Benchmarki wydajności i monitoring SLO.
+- Procedura backup/restore i retencja logów.
+- Materiały demo sprzedażowego: film + animacje procesu.
 
-## Slajd 10 — Podsumowanie sprzedażowe
+## Slajd 11 — Podsumowanie sprzedażowe
 
 - WMS jest gotowy do pilotażu: działa E2E i ma kontrolę ról.
 - Już dziś ogranicza błędy operacyjne i skraca czas realizacji.
-- Kolejny krok: pilotaż + zbieranie feedbacku użytkowników + szybkie iteracje.
+- Kolejny krok: domknąć F15 + TestFlight, uruchomić pilotaż i szybkie iteracje.
 
 ---
 
