@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/wms_api.dart';
+import 'code_entry_dialog.dart';
 
 Future<Product?> pickProductFromCatalog(
   BuildContext context, {
@@ -99,14 +100,35 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
               onSubmitted: _load,
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _loading ? null : () => _load(_searchCtrl.text),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Odśwież listę'),
-              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: _loading
+                      ? null
+                      : () async {
+                          final code = await askCode(
+                            context,
+                            title: 'Szukaj towaru',
+                            label: 'EAN lub SKU',
+                            hint: 'Wpisz kod albo Skanuj.',
+                          );
+                          if (code == null || !mounted) return;
+                          _searchCtrl.text = code;
+                          await _load(code);
+                        },
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('Skanuj kod'),
+                ),
+                TextButton.icon(
+                  onPressed: _loading ? null : () => _load(_searchCtrl.text),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Odśwież listę'),
+                ),
+              ],
             ),
+            const SizedBox(height: 4),
             SizedBox(
               height: 360,
               child: _loading
