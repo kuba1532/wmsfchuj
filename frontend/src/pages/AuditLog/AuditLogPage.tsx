@@ -1,8 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Box, Typography, TextField, InputAdornment, Chip, CircularProgress } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Search } from '@mui/icons-material';
-import { useState as useStateInner, useEffect, useCallback as useCallbackInner } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 

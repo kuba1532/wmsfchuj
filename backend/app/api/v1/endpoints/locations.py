@@ -117,15 +117,28 @@ def update_location(
             )
 
     changes = {}
+    before = {}
+    after = {}
     for field, value in payload.items():
+        previous = getattr(location, field)
+        before[field] = previous.value if hasattr(previous, "value") else previous
         if field == "type" and value is not None:
             setattr(location, field, LocationTypeEnum(value))
         else:
             setattr(location, field, value)
         changes[field] = value
+        current = getattr(location, field)
+        after[field] = current.value if hasattr(current, "value") else current
 
     location.version += 1
-    log_action(db, "UPDATE", "Location", location.id, details=changes, user_id=current_user.id)
+    log_action(
+        db,
+        "UPDATE",
+        "Location",
+        location.id,
+        details={"changed_fields": changes, "before": before, "after": after},
+        user_id=current_user.id,
+    )
     db.commit()
     db.refresh(location)
     return LocationResponse.model_validate(location)

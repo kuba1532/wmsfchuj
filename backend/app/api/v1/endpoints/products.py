@@ -131,12 +131,23 @@ def update_product(
             )
 
     changes = {}
+    before = {}
+    after = {}
     for field, value in payload.items():
+        before[field] = getattr(product, field)
         setattr(product, field, value)
         changes[field] = value
+        after[field] = getattr(product, field)
 
     product.version += 1
-    log_action(db, "UPDATE", "Product", product.id, details=changes, user_id=current_user.id)
+    log_action(
+        db,
+        "UPDATE",
+        "Product",
+        product.id,
+        details={"changed_fields": changes, "before": before, "after": after},
+        user_id=current_user.id,
+    )
     db.commit()
     db.refresh(product)
     return ProductResponse.model_validate(product)

@@ -12,12 +12,6 @@ interface DocumentPDFData {
   status: string;
 }
 
-const TYPE_TITLES: Record<string, string> = {
-  PZ: 'Przyjecie zewnetrzne',
-  MM: 'Przesuniecie miedzymagazynowe',
-  RW: 'Wydanie',
-};
-
 const TYPE_FULL_NAMES: Record<string, string> = {
   PZ: 'Przyjecie Zewnetrzne nr',
   MM: 'Przesuniecie Miedzymagazynowe nr',
