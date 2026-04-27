@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../models/models.dart';
+import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import '../widgets/code_entry_dialog.dart';
 
 /// Podgląd stanów + test połączenia (GET /api/health, GET /stock).
 class StockTab extends StatefulWidget {
-  const StockTab({super.key, required this.api});
+  const StockTab({super.key, required this.api, required this.syncBus});
 
   final WmsApi api;
+  final SyncBus syncBus;
 
   @override
   State<StockTab> createState() => _StockTabState();
@@ -20,17 +23,68 @@ class _StockTabState extends State<StockTab> {
   bool _loading = false;
   String? _error;
   final _manualCode = TextEditingController();
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _refreshAll();
+    widget.syncBus.addListener(_onSyncEvent);
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (!mounted || _loading) return;
+      _refreshAll();
+    });
   }
 
   @override
   void dispose() {
+    widget.syncBus.removeListener(_onSyncEvent);
+    _autoRefreshTimer?.cancel();
     _manualCode.dispose();
     super.dispose();
+  }
+
+  void _onSyncEvent() {
+    if (!mounted || _loading) return;
+    _refreshAll();
+  }
+
+  Future<void> _reservePart(StockRow row) async {
+    final c = TextEditingController(text: '0.5');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rezerwacja ilości (BLOCKED)'),
+        content: TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Ilość do zablokowania'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Zablokuj')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final qty = double.tryParse(c.text.replaceAll(',', '.'));
+    if (qty == null || qty <= 0) return;
+    try {
+      await widget.api.changeStockStatus(
+        stockId: row.id,
+        status: 'BLOCKED',
+        version: row.version,
+        quantity: qty,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ilość została zarezerwowana.')));
+      await _refreshAll();
+      widget.syncBus.publish();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _refreshAll() async {
@@ -156,7 +210,13 @@ class _StockTabState extends State<StockTab> {
                 dense: true,
                 leading: const Icon(Icons.inventory),
                 title: Text(r.productName ?? 'Produkt #${r.id}'),
-                subtitle: Text('${r.locationCode ?? "?"} · ilość ${r.quantity}'),
+                subtitle: Text('${r.locationCode ?? "?"} · ilość ${r.quantity} · ${r.status}'),
+                trailing: r.status == 'AVAILABLE'
+                    ? TextButton(
+                        onPressed: _loading ? null : () => _reservePart(r),
+                        child: const Text('Rezerwuj'),
+                      )
+                    : null,
               ),
             ),
         ],

@@ -140,13 +140,21 @@ class LocationItem {
 class StockRow {
   StockRow({
     required this.id,
+    required this.productId,
+    required this.locationId,
     required this.quantity,
+    required this.status,
+    required this.version,
     this.productName,
     this.locationCode,
   });
 
   final int id;
+  final int productId;
+  final int locationId;
   final String quantity;
+  final String status;
+  final int version;
   final String? productName;
   final String? locationCode;
 
@@ -159,7 +167,11 @@ class StockRow {
     if (l is Map<String, dynamic>) lc = l['code'] as String?;
     return StockRow(
       id: j['id'] as int,
+      productId: j['product_id'] as int? ?? 0,
+      locationId: j['location_id'] as int? ?? 0,
       quantity: _decStr(j['quantity']) ?? '0',
+      status: j['status'] as String? ?? 'AVAILABLE',
+      version: j['version'] as int? ?? 1,
       productName: pn,
       locationCode: lc,
     );

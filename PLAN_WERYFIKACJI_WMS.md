@@ -37,7 +37,7 @@ Cel: upewnić się, że backend, frontend web i aplikacja mobilna są spójne, b
 
 - [ ] Adres API (`--dart-define=WMS_API_BASE=...`) zgodny z siecią (emulator Android: `10.0.2.2`, iOS: `localhost`).
 - [ ] Logowanie, lista zadań, skan → wyszukanie produktu, utworzenie PZ.
-- [ ] Uprawnienia kamery na urządzeniu fizycznym.
+- [ ] Uprawnienia kamery na urządzeniuo fizycznym.
 
 ## 7. Jakość kodu i CI (opcjonalnie)
 

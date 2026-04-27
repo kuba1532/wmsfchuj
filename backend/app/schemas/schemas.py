@@ -115,6 +115,16 @@ class LocationCreate(BaseModel):
     rack: Optional[str] = Field(None, max_length=10)
     shelf: Optional[str] = Field(None, max_length=10)
 
+    @field_validator("code")
+    @classmethod
+    def normalize_location_code(cls, v: str) -> str:
+        value = v.strip().upper()
+        if not value:
+            raise ValueError("Kod lokalizacji nie moze byc pusty.")
+        if not all(ch.isalnum() or ch == "-" for ch in value):
+            raise ValueError("Kod lokalizacji moze zawierac tylko A-Z, 0-9 i myślnik.")
+        return value
+
 
 class LocationUpdate(BaseModel):
     code: Optional[str] = Field(None, max_length=50)
@@ -124,6 +134,18 @@ class LocationUpdate(BaseModel):
     shelf: Optional[str] = Field(None, max_length=10)
     is_active: Optional[bool] = None
     version: int = Field(..., description="Wersja rekordu (optimistic locking)")
+
+    @field_validator("code")
+    @classmethod
+    def normalize_location_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        value = v.strip().upper()
+        if not value:
+            raise ValueError("Kod lokalizacji nie moze byc pusty.")
+        if not all(ch.isalnum() or ch == "-" for ch in value):
+            raise ValueError("Kod lokalizacji moze zawierac tylko A-Z, 0-9 i myślnik.")
+        return value
 
 
 class LocationResponse(BaseModel):

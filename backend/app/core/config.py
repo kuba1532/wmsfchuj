@@ -37,8 +37,8 @@ class Settings(BaseSettings):
 
     # Przykładowe zadania (tylko gdy tabela tasks jest pusta)
     SEED_DEMO_TASKS: bool = True
-    # Konto magazyniera do demo mobilnego (zadania przypisane do tego użytkownika)
-    DEMO_WORKER_EMAIL: str = "magazynier@demo.wms"
+    # Konto operatora mobilnego (zadania przypisane do tego użytkownika)
+    DEMO_WORKER_EMAIL: str = "operator@wms.pl"
     DEMO_WORKER_PASSWORD: str = "Demo1234"
 
     @field_validator("JWT_SECRET_KEY")

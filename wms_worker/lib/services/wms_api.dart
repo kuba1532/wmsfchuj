@@ -298,6 +298,27 @@ class WmsApi {
     return DocumentHeader.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  Future<StockRow> changeStockStatus({
+    required int stockId,
+    required String status,
+    required int version,
+    double? quantity,
+  }) async {
+    final payload = <String, dynamic>{'status': status, 'version': version};
+    if (quantity != null) {
+      payload['quantity'] = quantity;
+    }
+    final res = await _httpT(
+      http.patch(
+        _u('/stock/$stockId/status'),
+        headers: _headers(jsonBody: true),
+        body: jsonEncode(payload),
+      ),
+    );
+    _throwIfBad(res);
+    return StockRow.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   void _throwIfBad(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) return;
     throw ApiException(res.statusCode, WmsApi._errBody(res.body));

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { LocationType } from '@/constants/locationTypes';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 export interface LocationItem {
   id: number;
@@ -78,6 +79,8 @@ export function useLocations({
   useEffect(() => {
     fetchLocations();
   }, [fetchLocations]);
+
+  useAutoRefresh(fetchLocations);
 
   const createLocation = useCallback(
     async (data: LocationCreateData) => {

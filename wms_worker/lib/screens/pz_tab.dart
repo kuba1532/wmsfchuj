@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
-import '../widgets/code_entry_dialog.dart';
+import '../widgets/product_picker_dialog.dart';
 
 class PzTab extends StatefulWidget {
-  const PzTab({super.key, required this.api});
+  const PzTab({super.key, required this.api, required this.syncBus});
 
   final WmsApi api;
+  final SyncBus syncBus;
 
   @override
   State<PzTab> createState() => _PzTabState();
@@ -70,25 +72,13 @@ class _PzTabState extends State<PzTab> {
       );
       return;
     }
-    final code = await askCode(
-      context,
-      title: 'Towar na PZ',
-      label: 'EAN lub SKU',
-      hint: 'Wpisz kod ręcznie albo wybierz Skanuj.',
-    );
-    if (code == null || !mounted) return;
-
     try {
-      final products = await widget.api.searchProducts(code.trim(), supplierId: _supplierId);
-      if (products.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Brak produktu u tego dostawcy dla: $code')),
-          );
-        }
-        return;
-      }
-      final product = products.length == 1 ? products.first : await _pickProduct(products);
+      final product = await pickProductFromCatalog(
+        context,
+        api: widget.api,
+        title: 'Wybierz towar na PZ',
+        supplierId: _supplierId,
+      );
       if (product == null || !mounted) return;
 
       final qty = await _askQuantity();
@@ -100,26 +90,6 @@ class _PzTabState extends State<PzTab> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       }
     }
-  }
-
-  Future<Product?> _pickProduct(List<Product> products) async {
-    return showModalBottomSheet<Product>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: products
-              .map(
-                (p) => ListTile(
-                  title: Text(p.name),
-                  subtitle: Text('${p.sku}${p.ean != null ? " · EAN ${p.ean}" : ""}'),
-                  onTap: () => Navigator.pop(ctx, p),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
   }
 
   Future<double?> _askQuantity() async {
@@ -173,6 +143,7 @@ class _PzTabState extends State<PzTab> {
         _lines.clear();
       });
       await _loadDocs();
+      widget.syncBus.publish();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Utworzono PZ: ${doc.number}')),
@@ -190,6 +161,7 @@ class _PzTabState extends State<PzTab> {
     try {
       await widget.api.pzStart(d.id);
       await _loadDocs();
+      widget.syncBus.publish();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Rozpoczęto przyjęcie ${d.number}')),
@@ -206,6 +178,7 @@ class _PzTabState extends State<PzTab> {
     try {
       await widget.api.pzComplete(d.id);
       await _loadDocs();
+      widget.syncBus.publish();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Zakończono ${d.number} — dodano zadania odłożenia')),

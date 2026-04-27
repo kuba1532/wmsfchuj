@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../models/models.dart';
+import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import '../util/task_playbook.dart';
 
 class TasksTab extends StatefulWidget {
-  const TasksTab({super.key, required this.api});
+  const TasksTab({super.key, required this.api, required this.syncBus});
 
   final WmsApi api;
+  final SyncBus syncBus;
 
   @override
   State<TasksTab> createState() => _TasksTabState();
@@ -19,10 +22,28 @@ class _TasksTabState extends State<TasksTab> {
   String? _error;
   bool _loading = true;
   String? _typeFilter;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
+    _load();
+    widget.syncBus.addListener(_onSyncEvent);
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      if (!mounted || _loading) return;
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.syncBus.removeListener(_onSyncEvent);
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onSyncEvent() {
+    if (!mounted || _loading) return;
     _load();
   }
 
@@ -55,6 +76,9 @@ class _TasksTabState extends State<TasksTab> {
   List<TaskItem> get _filtered {
     final all = _items ?? [];
     if (_typeFilter == null || _typeFilter!.isEmpty) return all;
+    if (_typeFilter == 'PICKING_MOVE') {
+      return all.where((t) => t.type == 'PICKING' || t.type == 'MOVE').toList();
+    }
     return all.where((t) => t.type == _typeFilter).toList();
   }
 
@@ -62,6 +86,7 @@ class _TasksTabState extends State<TasksTab> {
     try {
       await widget.api.startTask(t.id);
       await _load();
+      widget.syncBus.publish();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zadanie rozpoczęte')));
       }
@@ -76,6 +101,7 @@ class _TasksTabState extends State<TasksTab> {
     try {
       await widget.api.completeTask(t.id);
       await _load();
+      widget.syncBus.publish();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zadanie zakończone')));
       }
@@ -138,6 +164,11 @@ class _TasksTabState extends State<TasksTab> {
                 label: const Text('Putaway'),
                 selected: _typeFilter == 'PUTAWAY',
                 onSelected: (_) => setState(() => _typeFilter = 'PUTAWAY'),
+              ),
+              FilterChip(
+                label: const Text('Picking + Move'),
+                selected: _typeFilter == 'PICKING_MOVE',
+                onSelected: (_) => setState(() => _typeFilter = 'PICKING_MOVE'),
               ),
               FilterChip(
                 label: const Text('Move'),

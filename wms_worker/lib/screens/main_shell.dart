@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/session_store.dart';
+import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import 'login_screen.dart';
 import 'mm_tab.dart';
@@ -26,28 +27,30 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
   late final WmsApi _api;
+  late final SyncBus _syncBus;
   late final List<Widget?> _tabs;
 
   @override
   void initState() {
     super.initState();
     _api = WmsApi(widget.accessToken);
+    _syncBus = SyncBus();
     _tabs = List<Widget?>.filled(5, null);
-    _tabs[0] = TasksTab(api: _api);
+    _tabs[0] = TasksTab(api: _api, syncBus: _syncBus);
   }
 
   Widget _buildTab(int index) {
     switch (index) {
       case 0:
-        return TasksTab(api: _api);
+        return TasksTab(api: _api, syncBus: _syncBus);
       case 1:
-        return PzTab(api: _api);
+        return PzTab(api: _api, syncBus: _syncBus);
       case 2:
-        return MmTab(api: _api);
+        return MmTab(api: _api, syncBus: _syncBus);
       case 3:
-        return RwTab(api: _api);
+        return RwTab(api: _api, syncBus: _syncBus);
       case 4:
-        return StockTab(api: _api);
+        return StockTab(api: _api, syncBus: _syncBus);
       default:
         return const SizedBox.shrink();
     }
@@ -67,6 +70,12 @@ class _MainShellState extends State<MainShell> {
       MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
       (_) => false,
     );
+  }
+
+  @override
+  void dispose() {
+    _syncBus.dispose();
+    super.dispose();
   }
 
   @override

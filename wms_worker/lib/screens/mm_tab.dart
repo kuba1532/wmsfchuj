@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../models/models.dart';
+import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import '../widgets/code_entry_dialog.dart';
+import '../widgets/product_picker_dialog.dart';
 
 /// Przesunięcie MM — skan lokalizacji źródłowej/docelowej + linie towaru (powiązanie z backendem /documents/mm).
 class MmTab extends StatefulWidget {
-  const MmTab({super.key, required this.api});
+  const MmTab({super.key, required this.api, required this.syncBus});
 
   final WmsApi api;
+  final SyncBus syncBus;
 
   @override
   State<MmTab> createState() => _MmTabState();
@@ -25,12 +29,25 @@ class _MmTabState extends State<MmTab> {
   List<DocumentHeader>? _recent;
   bool _loadingList = true;
   String? _listError;
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDocs();
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      if (!mounted || _loadingList || _saving) return;
+      _loadDocs();
+    });
   }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  String _normalizeLocationCode(String raw) => raw.trim().toUpperCase();
 
   Future<void> _loadDocs() async {
     setState(() {
@@ -57,12 +74,19 @@ class _MmTabState extends State<MmTab> {
       hint: 'Wpisz kod regału (np. BUF-DEMO) albo Skanuj.',
     );
     if (code == null || !mounted) return;
+    final normalized = _normalizeLocationCode(code);
+    if (!RegExp(r'^[A-Z0-9-]{3,20}$').hasMatch(normalized)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kod lokalizacji: tylko A-Z, 0-9 i myślnik (3-20 znaków)')),
+      );
+      return;
+    }
     try {
-      final locs = await widget.api.fetchLocations(search: code.trim(), pageSize: 30);
+      final locs = await widget.api.fetchLocations(search: normalized, pageSize: 30);
       if (!mounted) return;
       if (locs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Brak lokalizacji dla kodu: $code')),
+          SnackBar(content: Text('Brak lokalizacji dla kodu: $normalized')),
         );
         return;
       }
@@ -103,23 +127,12 @@ class _MmTabState extends State<MmTab> {
   }
 
   Future<void> _addProductLine() async {
-    final code = await askCode(
-      context,
-      title: 'Towar na MM',
-      label: 'EAN lub SKU',
-      hint: 'Wpisz kod ręcznie albo Skanuj.',
-    );
-    if (code == null || !mounted) return;
     try {
-      final products = await widget.api.searchProducts(code.trim());
-      if (!mounted) return;
-      if (products.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Brak produktu: $code')),
-        );
-        return;
-      }
-      final product = products.length == 1 ? products.first : await _pickProduct(products);
+      final product = await pickProductFromCatalog(
+        context,
+        api: widget.api,
+        title: 'Wybierz towar na MM',
+      );
       if (product == null || !mounted) return;
       final qty = await _askQuantity();
       if (qty == null || !mounted) return;
@@ -127,26 +140,6 @@ class _MmTabState extends State<MmTab> {
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
-  }
-
-  Future<Product?> _pickProduct(List<Product> products) {
-    return showModalBottomSheet<Product>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: products
-              .map(
-                (p) => ListTile(
-                  title: Text(p.name),
-                  subtitle: Text(p.sku),
-                  onTap: () => Navigator.pop(ctx, p),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
   }
 
   Future<double?> _askQuantity() async {
@@ -206,6 +199,7 @@ class _MmTabState extends State<MmTab> {
       if (!mounted) return;
       setState(() => _lines.clear());
       await _loadDocs();
+      widget.syncBus.publish();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

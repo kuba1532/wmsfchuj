@@ -45,8 +45,8 @@ def seed_demo_worker() -> None:
             login_code=login_code,
             email=settings.DEMO_WORKER_EMAIL,
             password_hash=hash_password(settings.DEMO_WORKER_PASSWORD),
-            first_name="Magazynier",
-            last_name="Demo",
+            first_name="Operator",
+            last_name="Magazynu",
             role=RoleEnum.WORKER,
         )
         db.add(worker)
@@ -122,33 +122,33 @@ def seed_demo_tasks() -> None:
         if not assignee:
             return
 
-        p1 = db.query(Product).filter(Product.sku == "DEMO-001").first()
+        p1 = db.query(Product).filter(Product.sku == "PRD-1001").first()
         if not p1:
-            p1 = Product(sku="DEMO-001", name="Towar demo — skrzynki", unit="szt", is_active=True)
+            p1 = Product(sku="PRD-1001", name="Komponent montażowy A", unit="szt", is_active=True)
             db.add(p1)
             db.flush()
 
-        p2 = db.query(Product).filter(Product.sku == "DEMO-002").first()
+        p2 = db.query(Product).filter(Product.sku == "PRD-1002").first()
         if not p2:
-            p2 = Product(sku="DEMO-002", name="Towar demo — palety", unit="szt", is_active=True)
+            p2 = Product(sku="PRD-1002", name="Zestaw logistyczny B", unit="szt", is_active=True)
             db.add(p2)
             db.flush()
 
-        buf = db.query(Location).filter(Location.code == "BUF-DEMO").first()
+        buf = db.query(Location).filter(Location.code == "BUF-01").first()
         if not buf:
-            buf = Location(code="BUF-DEMO", type=LocationTypeEnum.BUFFER, is_active=True)
+            buf = Location(code="BUF-01", type=LocationTypeEnum.BUFFER, is_active=True)
             db.add(buf)
             db.flush()
 
-        sto = db.query(Location).filter(Location.code == "STO-DEMO").first()
+        sto = db.query(Location).filter(Location.code == "STO-01").first()
         if not sto:
-            sto = Location(code="STO-DEMO", type=LocationTypeEnum.STORAGE, is_active=True)
+            sto = Location(code="STO-01", type=LocationTypeEnum.STORAGE, is_active=True)
             db.add(sto)
             db.flush()
 
-        pick = db.query(Location).filter(Location.code == "PICK-DEMO").first()
+        pick = db.query(Location).filter(Location.code == "PICK-01").first()
         if not pick:
-            pick = Location(code="PICK-DEMO", type=LocationTypeEnum.PICKING_ZONE, is_active=True)
+            pick = Location(code="PICK-01", type=LocationTypeEnum.PICKING_ZONE, is_active=True)
             db.add(pick)
             db.flush()
 
@@ -206,20 +206,20 @@ def seed_demo_tasks() -> None:
 
 
 def seed_suppliers() -> None:
-    """Jeden dostawca demo + powiazania wszystkich aktywnych produktow (dla PZ)."""
+    """Domyślny dostawca + powiązania aktywnych produktów (dla PZ)."""
     from app.models.models import Supplier, SupplierProduct, Product
 
     db = SessionLocal()
     try:
         if db.query(Supplier).first():
             return
-        s = Supplier(code="DEMO-SUP", name="Dostawca demonstracyjny", is_active=True)
+        s = Supplier(code="SUP-001", name="Northwind Supplies", is_active=True)
         db.add(s)
         db.flush()
         for p in db.query(Product).filter(Product.is_active.is_(True)).all():
             db.add(SupplierProduct(supplier_id=s.id, product_id=p.id))
         db.commit()
-        logger.info("Dodano dostawce DEMO-SUP i powiazania produktow (supplier_products).")
+        logger.info("Dodano dostawce SUP-001 i powiazania produktow (supplier_products).")
     except Exception:
         db.rollback()
         logger.exception("Blad podczas seedu dostawcow.")

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { DocumentStatus } from '@/constants/documentStatuses';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 export interface DocumentLineItem {
   id: number;
@@ -92,6 +93,8 @@ export function useDocuments({
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  useAutoRefresh(fetchDocuments);
 
   const createPZ = useCallback(
     async (data: Parameters<UseDocumentsReturn['createPZ']>[0]) => {

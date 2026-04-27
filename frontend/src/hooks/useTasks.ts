@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 export interface TaskItem {
   id: number;
@@ -78,6 +79,8 @@ export function useTasks({
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+
+  useAutoRefresh(fetchTasks);
 
   const startTask = useCallback(
     async (id: number) => {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { StockStatus } from '@/constants/stockStatuses';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 export interface StockItem {
   id: number;
@@ -68,6 +69,8 @@ export function useStock({
   useEffect(() => {
     fetchStock();
   }, [fetchStock]);
+
+  useAutoRefresh(fetchStock);
 
   const changeStatus = useCallback(
     async (id: number, status: StockStatus, version?: number, quantity?: number) => {

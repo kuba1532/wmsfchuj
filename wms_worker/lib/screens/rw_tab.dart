@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 
 import '../models/models.dart';
+import '../services/session_store.dart';
+import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
-import '../widgets/code_entry_dialog.dart';
+import '../widgets/product_picker_dialog.dart';
 
 /// Wydanie RW (rozchód) — scenariusz „pakowanie / wysyłka”: odbiorca + towary ze skanu.
 class RwTab extends StatefulWidget {
-  const RwTab({super.key, required this.api});
+  const RwTab({super.key, required this.api, required this.syncBus});
 
   final WmsApi api;
+  final SyncBus syncBus;
 
   @override
   State<RwTab> createState() => _RwTabState();
@@ -22,17 +26,32 @@ class _RwTabState extends State<RwTab> {
   bool _saving = false;
   String? _listError;
   bool _autoToTasks = true;
+  List<String> _recentRecipients = [];
+  final _store = SessionStore();
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadDocs();
+    _loadRecipients();
+    _autoRefreshTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      if (!mounted || _loadingList || _saving) return;
+      _loadDocs();
+    });
   }
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _recipient.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRecipients() async {
+    final list = await _store.readRecentRecipients();
+    if (!mounted) return;
+    setState(() => _recentRecipients = list);
   }
 
   Future<void> _loadDocs() async {
@@ -53,23 +72,12 @@ class _RwTabState extends State<RwTab> {
   }
 
   Future<void> _addLine() async {
-    final code = await askCode(
-      context,
-      title: 'Towar na RW',
-      label: 'EAN lub SKU',
-      hint: 'Wpisz kod ręcznie albo Skanuj.',
-    );
-    if (code == null || !mounted) return;
     try {
-      final products = await widget.api.searchProducts(code.trim());
-      if (!mounted) return;
-      if (products.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Brak produktu: $code')),
-        );
-        return;
-      }
-      final product = products.length == 1 ? products.first : await _pickProduct(products);
+      final product = await pickProductFromCatalog(
+        context,
+        api: widget.api,
+        title: 'Wybierz towar na RW',
+      );
       if (product == null || !mounted) return;
       final qty = await _askQuantity();
       if (qty == null || !mounted) return;
@@ -77,26 +85,6 @@ class _RwTabState extends State<RwTab> {
     } on ApiException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
-  }
-
-  Future<Product?> _pickProduct(List<Product> products) {
-    return showModalBottomSheet<Product>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: products
-              .map(
-                (p) => ListTile(
-                  title: Text(p.name),
-                  subtitle: Text(p.sku),
-                  onTap: () => Navigator.pop(ctx, p),
-                ),
-              )
-              .toList(),
-        ),
-      ),
-    );
   }
 
   Future<double?> _askQuantity() async {
@@ -142,11 +130,14 @@ class _RwTabState extends State<RwTab> {
         await widget.api.submitToTasks(doc.id);
       }
       if (!mounted) return;
+      await _store.saveRecentRecipient(r);
       setState(() {
         _lines.clear();
         _recipient.clear();
       });
+      await _loadRecipients();
       await _loadDocs();
+      widget.syncBus.publish();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -189,6 +180,21 @@ class _RwTabState extends State<RwTab> {
               border: OutlineInputBorder(),
             ),
           ),
+          if (_recentRecipients.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _recentRecipients
+                  .map(
+                    (r) => ActionChip(
+                      label: Text(r),
+                      onPressed: () => setState(() => _recipient.text = r),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
           const SizedBox(height: 12),
           FilledButton.tonalIcon(
             onPressed: _saving ? null : _addLine,
