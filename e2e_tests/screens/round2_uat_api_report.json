@@ -1,0 +1,61 @@
+{
+  "startedAt": "2026-04-21T17:33:41.450Z",
+  "api": "http://127.0.0.1:8000/api/v1",
+  "user": "00001",
+  "results": [
+    {
+      "name": "login",
+      "status": "OK",
+      "detail": "user=00001"
+    },
+    {
+      "name": "snapshot",
+      "status": "OK",
+      "detail": "tasks=26, stock=5"
+    },
+    {
+      "name": "pz_create",
+      "status": "OK",
+      "detail": "HTTP 201 PZ/2026/011"
+    },
+    {
+      "name": "pz_start",
+      "status": "OK",
+      "detail": "HTTP 200 status=IN_PROGRESS"
+    },
+    {
+      "name": "pz_complete",
+      "status": "OK",
+      "detail": "HTTP 200 status=COMPLETED"
+    },
+    {
+      "name": "mm_create",
+      "status": "OK",
+      "detail": "HTTP 201 MM/2026/019"
+    },
+    {
+      "name": "mm_confirm",
+      "status": "OK",
+      "detail": "HTTP 200 status=IN_PROGRESS"
+    },
+    {
+      "name": "mm_task_autogen",
+      "status": "OK",
+      "detail": "MOVE before=14 after=15"
+    },
+    {
+      "name": "rw_create",
+      "status": "OK",
+      "detail": "HTTP 201 RW/2026/007"
+    },
+    {
+      "name": "rw_confirm_business_rule",
+      "status": "OK",
+      "detail": "RW poprawnie zablokowane bez stanu w strefie kompletacji"
+    }
+  ],
+  "summary": {
+    "ok": 10,
+    "fail": 0
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "runs": [
+    {
+      "users": 1,
+      "ok": true,
+      "requests": 10,
+      "errorRate": 0,
+      "p95": 52.9,
+      "avg": 29.48,
+      "wallTimeSec": 0.3
+    },
+    {
+      "users": 2,
+      "ok": true,
+      "requests": 20,
+      "errorRate": 0,
+      "p95": 69.28,
+      "avg": 52.26,
+      "wallTimeSec": 0.33
+    },
+    {
+      "users": 5,
+      "ok": true,
+      "requests": 50,
+      "errorRate": 0,
+      "p95": 198.58,
+      "avg": 120.61,
+      "wallTimeSec": 0.46
+    },
+    {
+      "users": 10,
+      "ok": true,
+      "requests": 100,
+      "errorRate": 77,
+      "p95": 10010.76,
+      "avg": 7748.33,
+      "wallTimeSec": 20.23
+    },
+    {
+      "users": 15,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 20,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 25,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 30,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 35,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 40,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 45,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    },
+    {
+      "users": 50,
+      "ok": false,
+      "error": "runner_failed",
+      "stderr": "[DOMException [TimeoutError]: The operation was aborted due to timeout]"
+    }
+  ],
+  "target": {
+    "p95_ms_lte": 2000,
+    "errorRate_pct_eq": 0
+  },
+  "max_users_meeting_target": 5
+}

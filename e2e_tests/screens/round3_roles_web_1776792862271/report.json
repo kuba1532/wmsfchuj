@@ -1,0 +1,105 @@
+{
+  "startedAt": "2026-04-21T17:34:22.271Z",
+  "outDir": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/round3_roles_web_1776792862271",
+  "runs": [
+    {
+      "role": "admin",
+      "login": "00001",
+      "pages": [
+        {
+          "path": "/dashboard",
+          "url": "http://127.0.0.1:5173/dashboard",
+          "screenshot": "admin_dashboard.png"
+        },
+        {
+          "path": "/tasks",
+          "url": "http://127.0.0.1:5173/tasks",
+          "screenshot": "admin_tasks.png"
+        },
+        {
+          "path": "/documents/mm",
+          "url": "http://127.0.0.1:5173/documents/mm",
+          "screenshot": "admin_documents_mm.png"
+        },
+        {
+          "path": "/users",
+          "url": "http://127.0.0.1:5173/users",
+          "screenshot": "admin_users.png"
+        },
+        {
+          "path": "/audit-log",
+          "url": "http://127.0.0.1:5173/audit-log",
+          "screenshot": "admin_audit-log.png"
+        }
+      ],
+      "loginOk": true,
+      "loginScreenshot": "admin_00_after_login.png"
+    },
+    {
+      "role": "foreman",
+      "login": "40476",
+      "pages": [
+        {
+          "path": "/dashboard",
+          "url": "http://127.0.0.1:5173/dashboard",
+          "screenshot": "foreman_dashboard.png"
+        },
+        {
+          "path": "/tasks",
+          "url": "http://127.0.0.1:5173/tasks",
+          "screenshot": "foreman_tasks.png"
+        },
+        {
+          "path": "/documents/mm",
+          "url": "http://127.0.0.1:5173/documents/mm",
+          "screenshot": "foreman_documents_mm.png"
+        },
+        {
+          "path": "/users",
+          "url": "http://127.0.0.1:5173/dashboard",
+          "screenshot": "foreman_users.png"
+        },
+        {
+          "path": "/audit-log",
+          "url": "http://127.0.0.1:5173/audit-log",
+          "screenshot": "foreman_audit-log.png"
+        }
+      ],
+      "loginOk": true,
+      "loginScreenshot": "foreman_00_after_login.png"
+    },
+    {
+      "role": "worker",
+      "login": "00002",
+      "pages": [
+        {
+          "path": "/dashboard",
+          "url": "http://127.0.0.1:5173/dashboard",
+          "screenshot": "worker_dashboard.png"
+        },
+        {
+          "path": "/tasks",
+          "url": "http://127.0.0.1:5173/tasks",
+          "screenshot": "worker_tasks.png"
+        },
+        {
+          "path": "/documents/mm",
+          "url": "http://127.0.0.1:5173/documents/mm",
+          "screenshot": "worker_documents_mm.png"
+        },
+        {
+          "path": "/users",
+          "url": "http://127.0.0.1:5173/dashboard",
+          "screenshot": "worker_users.png"
+        },
+        {
+          "path": "/audit-log",
+          "url": "http://127.0.0.1:5173/audit-log",
+          "screenshot": "worker_audit-log.png"
+        }
+      ],
+      "loginOk": true,
+      "loginScreenshot": "worker_00_after_login.png"
+    }
+  ]
+}

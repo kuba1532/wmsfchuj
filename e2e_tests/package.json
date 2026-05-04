@@ -1,0 +1,18 @@
+{
+  "name": "wms-e2e",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node run_tests.mjs",
+    "test:api:smoke": "node api_scenarios.mjs",
+    "test:api:uat2": "node round2_uat_api.mjs",
+    "test:api:roles": "node round3_roles_api.mjs",
+    "test:web:tabs": "node run_tabs_chrome.mjs",
+    "test:web:roles": "node round3_roles_webshots.mjs",
+    "test:all": "node run_all_tests.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}

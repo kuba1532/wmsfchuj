@@ -10,6 +10,16 @@ Wymagania:
 - Docker Desktop uruchomiony
 - Projekt sklonowany lokalnie
 
+Po git clone masz juz w repozytorium:
+- backend\.env — DATABASE_URL pod Docker Compose, JWT_SECRET_KEY, ADMIN_PASSWORD
+- frontend\.env i frontend\.env.local — VITE_API_URL=http://localhost:8000/api/v1
+
+Domyslne haslo administratora (seed przy pierwszym starcie, czysta baza):
+- LOGIN: kod 5-cyfrowy z logow lub tabeli users (zwykle 00001)
+- HASLO: wartosc ADMIN_PASSWORD z backend\.env (w zestawie dev: DevWmsAdmin2026)
+
+Uwaga bezpieczenstwa: to sa sekrety developerskie w repo — na produkcji wygeneruj wlasne.
+
 --------------------------------------------------------------
 KROK 1: Uruchom backend i bazę
 --------------------------------------------------------------

@@ -1,0 +1,169 @@
+{
+  "pages": [
+    {
+      "name": "10_dashboard",
+      "path": "/dashboard",
+      "url": "http://127.0.0.1:5173/dashboard",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/10_dashboard.png"
+    },
+    {
+      "name": "11_products",
+      "path": "/products",
+      "url": "http://127.0.0.1:5173/products",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/11_products.png"
+    },
+    {
+      "name": "12_locations",
+      "path": "/locations",
+      "url": "http://127.0.0.1:5173/locations",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/12_locations.png"
+    },
+    {
+      "name": "13_stock",
+      "path": "/stock",
+      "url": "http://127.0.0.1:5173/stock",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/13_stock.png"
+    },
+    {
+      "name": "14_documents_pz",
+      "path": "/documents/pz",
+      "url": "http://127.0.0.1:5173/documents/pz",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/14_documents_pz.png"
+    },
+    {
+      "name": "15_documents_mm",
+      "path": "/documents/mm",
+      "url": "http://127.0.0.1:5173/documents/mm",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/15_documents_mm.png"
+    },
+    {
+      "name": "16_documents_rw",
+      "path": "/documents/rw",
+      "url": "http://127.0.0.1:5173/documents/rw",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/16_documents_rw.png"
+    },
+    {
+      "name": "17_tasks",
+      "path": "/tasks",
+      "url": "http://127.0.0.1:5173/tasks",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/17_tasks.png"
+    },
+    {
+      "name": "18_putaway",
+      "path": "/putaway",
+      "url": "http://127.0.0.1:5173/putaway",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/18_putaway.png"
+    },
+    {
+      "name": "19_picking",
+      "path": "/picking",
+      "url": "http://127.0.0.1:5173/picking",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/19_picking.png"
+    },
+    {
+      "name": "20_inventory",
+      "path": "/inventory",
+      "url": "http://127.0.0.1:5173/inventory",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/20_inventory.png"
+    },
+    {
+      "name": "21_users",
+      "path": "/users",
+      "url": "http://127.0.0.1:5173/users",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/21_users.png"
+    },
+    {
+      "name": "22_reports",
+      "path": "/reports",
+      "url": "http://127.0.0.1:5173/reports",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/22_reports.png"
+    },
+    {
+      "name": "23_audit_log",
+      "path": "/audit-log",
+      "url": "http://127.0.0.1:5173/audit-log",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/23_audit_log.png"
+    },
+    {
+      "name": "24_suppliers",
+      "path": "/suppliers",
+      "url": "http://127.0.0.1:5173/dashboard",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/24_suppliers.png"
+    },
+    {
+      "name": "25_settings",
+      "path": "/settings",
+      "url": "http://127.0.0.1:5173/settings",
+      "title": "frontend",
+      "newErrors": [],
+      "newFailedRequests": [],
+      "screenshot": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/25_settings.png"
+    },
+    {
+      "name": "mm_scenario",
+      "newErrors": [
+        "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+      ],
+      "newFailedRequests": [
+        "400 POST http://192.168.0.205:8000/api/v1/documents/12/confirm"
+      ]
+    },
+    {
+      "name": "stock_scenario",
+      "newErrors": [],
+      "newFailedRequests": []
+    }
+  ],
+  "startedAt": "2026-04-19T19:46:32.548Z",
+  "allErrors": [
+    "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+  ],
+  "allFailedRequests": [
+    "400 POST http://192.168.0.205:8000/api/v1/documents/12/confirm"
+  ]
+}

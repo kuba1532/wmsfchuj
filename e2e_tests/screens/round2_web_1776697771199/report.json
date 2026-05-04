@@ -1,0 +1,46 @@
+{
+  "outDir": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/round2_web_1776697771199",
+  "startedAt": "2026-04-20T15:09:31.199Z",
+  "pages": [
+    {
+      "route": "/dashboard",
+      "file": "01_dashboard.png",
+      "url": "http://127.0.0.1:5173/dashboard"
+    },
+    {
+      "route": "/documents/pz",
+      "file": "02_documents_pz.png",
+      "url": "http://127.0.0.1:5173/documents/pz"
+    },
+    {
+      "route": "/documents/mm",
+      "file": "03_documents_mm.png",
+      "url": "http://127.0.0.1:5173/documents/mm"
+    },
+    {
+      "route": "/documents/rw",
+      "file": "04_documents_rw.png",
+      "url": "http://127.0.0.1:5173/documents/rw"
+    },
+    {
+      "route": "/tasks",
+      "file": "05_tasks.png",
+      "url": "http://127.0.0.1:5173/tasks"
+    },
+    {
+      "route": "/stock",
+      "file": "06_stock.png",
+      "url": "http://127.0.0.1:5173/stock"
+    },
+    {
+      "route": "/inventory",
+      "file": "07_inventory.png",
+      "url": "http://127.0.0.1:5173/inventory"
+    },
+    {
+      "route": "/audit-log",
+      "file": "08_audit_log.png",
+      "url": "http://127.0.0.1:5173/audit-log"
+    }
+  ]
+}

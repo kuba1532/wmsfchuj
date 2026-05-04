@@ -1,0 +1,72 @@
+{
+  "config": {
+    "users": 1,
+    "roundsPerUser": 2,
+    "totalRequestsPlanned": 10,
+    "apiBase": "http://127.0.0.1:8000/api/v1"
+  },
+  "loginMs": 241.18,
+  "wallTimeSec": 0.3,
+  "overall": {
+    "requests": 10,
+    "errors": 0,
+    "errorRate": 0,
+    "avg": 29.48,
+    "p50": 51.78,
+    "p95": 52.9,
+    "p99": 52.9,
+    "max": 52.9
+  },
+  "endpoints": {
+    "tasks": {
+      "requests": 2,
+      "errors": 0,
+      "errorRate": 0,
+      "avg": 29.49,
+      "p50": 52.9,
+      "p95": 52.9,
+      "p99": 52.9,
+      "max": 52.9
+    },
+    "stock": {
+      "requests": 2,
+      "errors": 0,
+      "errorRate": 0,
+      "avg": 29.29,
+      "p50": 52.58,
+      "p95": 52.58,
+      "p99": 52.58,
+      "max": 52.58
+    },
+    "documents": {
+      "requests": 2,
+      "errors": 0,
+      "errorRate": 0,
+      "avg": 30.32,
+      "p50": 52.18,
+      "p95": 52.18,
+      "p99": 52.18,
+      "max": 52.18
+    },
+    "products": {
+      "requests": 2,
+      "errors": 0,
+      "errorRate": 0,
+      "avg": 29.19,
+      "p50": 51.78,
+      "p95": 51.78,
+      "p99": 51.78,
+      "max": 51.78
+    },
+    "locations": {
+      "requests": 2,
+      "errors": 0,
+      "errorRate": 0,
+      "avg": 29.13,
+      "p50": 52.03,
+      "p95": 52.03,
+      "p99": 52.03,
+      "max": 52.03
+    }
+  }
+}

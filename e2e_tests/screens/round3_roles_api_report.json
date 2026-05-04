@@ -1,0 +1,250 @@
+{
+  "startedAt": "2026-04-21T17:33:41.503Z",
+  "api": "http://127.0.0.1:8000/api/v1",
+  "roles": [
+    {
+      "role": "ADMIN",
+      "login": "00001",
+      "loginStatus": 200,
+      "apiRole": "ADMIN",
+      "checks": [
+        {
+          "check": "dashboard_data_products",
+          "method": "GET",
+          "path": "/products?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "dashboard_data_locations",
+          "method": "GET",
+          "path": "/locations?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "tasks_list",
+          "method": "GET",
+          "path": "/tasks?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "documents_list",
+          "method": "GET",
+          "path": "/documents?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "stock_list",
+          "method": "GET",
+          "path": "/stock?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "inventory_list",
+          "method": "GET",
+          "path": "/inventory?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "suppliers_list",
+          "method": "GET",
+          "path": "/suppliers?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "users_list",
+          "method": "GET",
+          "path": "/users?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "audit_log_list",
+          "method": "GET",
+          "path": "/audit-log?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        }
+      ]
+    },
+    {
+      "role": "FOREMAN",
+      "login": "40476",
+      "loginStatus": 200,
+      "apiRole": "FOREMAN",
+      "checks": [
+        {
+          "check": "dashboard_data_products",
+          "method": "GET",
+          "path": "/products?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "dashboard_data_locations",
+          "method": "GET",
+          "path": "/locations?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "tasks_list",
+          "method": "GET",
+          "path": "/tasks?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "documents_list",
+          "method": "GET",
+          "path": "/documents?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "stock_list",
+          "method": "GET",
+          "path": "/stock?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "inventory_list",
+          "method": "GET",
+          "path": "/inventory?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "suppliers_list",
+          "method": "GET",
+          "path": "/suppliers?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "users_list",
+          "method": "GET",
+          "path": "/users?page=1&page_size=5",
+          "status": 403,
+          "ok": false,
+          "detail": "Brak uprawnien. Wymagany poziom: READ dla obszaru: users."
+        },
+        {
+          "check": "audit_log_list",
+          "method": "GET",
+          "path": "/audit-log?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        }
+      ]
+    },
+    {
+      "role": "WORKER",
+      "login": "00002",
+      "loginStatus": 200,
+      "apiRole": "WORKER",
+      "checks": [
+        {
+          "check": "dashboard_data_products",
+          "method": "GET",
+          "path": "/products?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "dashboard_data_locations",
+          "method": "GET",
+          "path": "/locations?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "tasks_list",
+          "method": "GET",
+          "path": "/tasks?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "documents_list",
+          "method": "GET",
+          "path": "/documents?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "stock_list",
+          "method": "GET",
+          "path": "/stock?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "inventory_list",
+          "method": "GET",
+          "path": "/inventory?page=1&page_size=5",
+          "status": 403,
+          "ok": false,
+          "detail": "Brak uprawnien. Wymagany poziom: OPERATIONAL dla obszaru: inventory."
+        },
+        {
+          "check": "suppliers_list",
+          "method": "GET",
+          "path": "/suppliers?page=1&page_size=5",
+          "status": 200,
+          "ok": true,
+          "detail": "allowed"
+        },
+        {
+          "check": "users_list",
+          "method": "GET",
+          "path": "/users?page=1&page_size=5",
+          "status": 403,
+          "ok": false,
+          "detail": "Brak uprawnien. Wymagany poziom: READ dla obszaru: users."
+        },
+        {
+          "check": "audit_log_list",
+          "method": "GET",
+          "path": "/audit-log?page=1&page_size=5",
+          "status": 403,
+          "ok": false,
+          "detail": "Brak uprawnien. Wymagany poziom: READ dla obszaru: reports."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "goNoGo": "GO",
+    "criticalFailures": 0
+  }
+}

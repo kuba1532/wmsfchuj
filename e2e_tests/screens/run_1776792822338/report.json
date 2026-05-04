@@ -1,0 +1,93 @@
+{
+  "outDir": "/Users/jakub/Downloads/WMS 2/e2e_tests/screens/run_1776792822338",
+  "startedAt": "2026-04-21T17:33:42.338Z",
+  "checks": [
+    {
+      "name": "login",
+      "status": "OK",
+      "detail": "http://127.0.0.1:5173/dashboard"
+    },
+    {
+      "name": "dashboard",
+      "status": "OK",
+      "detail": "/dashboard | dashboard.png | js=0 api=0"
+    },
+    {
+      "name": "products",
+      "status": "OK",
+      "detail": "/products | products.png | js=0 api=0"
+    },
+    {
+      "name": "locations",
+      "status": "OK",
+      "detail": "/locations | locations.png | js=0 api=0"
+    },
+    {
+      "name": "stock",
+      "status": "OK",
+      "detail": "/stock | stock.png | js=0 api=0"
+    },
+    {
+      "name": "documents_pz",
+      "status": "OK",
+      "detail": "/documents/pz | documents_pz.png | js=0 api=0"
+    },
+    {
+      "name": "documents_mm",
+      "status": "OK",
+      "detail": "/documents/mm | documents_mm.png | js=0 api=0"
+    },
+    {
+      "name": "documents_rw",
+      "status": "OK",
+      "detail": "/documents/rw | documents_rw.png | js=0 api=0"
+    },
+    {
+      "name": "tasks",
+      "status": "OK",
+      "detail": "/tasks | tasks.png | js=0 api=0"
+    },
+    {
+      "name": "putaway",
+      "status": "OK",
+      "detail": "/putaway | putaway.png | js=0 api=0"
+    },
+    {
+      "name": "picking",
+      "status": "OK",
+      "detail": "/picking | picking.png | js=0 api=0"
+    },
+    {
+      "name": "inventory",
+      "status": "OK",
+      "detail": "/inventory | inventory.png | js=0 api=0"
+    },
+    {
+      "name": "users",
+      "status": "OK",
+      "detail": "/users | users.png | js=0 api=0"
+    },
+    {
+      "name": "reports",
+      "status": "OK",
+      "detail": "/reports | reports.png | js=0 api=0"
+    },
+    {
+      "name": "audit_log",
+      "status": "OK",
+      "detail": "/audit-log | audit_log.png | js=0 api=0"
+    },
+    {
+      "name": "suppliers",
+      "status": "OK",
+      "detail": "/suppliers | suppliers.png | js=0 api=0"
+    },
+    {
+      "name": "settings",
+      "status": "OK",
+      "detail": "/settings | settings.png | js=0 api=0"
+    }
+  ],
+  "jsErrors": [],
+  "failedApi": []
+}
