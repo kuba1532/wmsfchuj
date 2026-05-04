@@ -14,9 +14,93 @@ Po git clone masz juz w repozytorium:
 - backend\.env — DATABASE_URL pod Docker Compose, JWT_SECRET_KEY, ADMIN_PASSWORD
 - frontend\.env i frontend\.env.local — VITE_API_URL=http://localhost:8000/api/v1
 
-Domyslne haslo administratora (seed przy pierwszym starcie, czysta baza):
-- LOGIN: kod 5-cyfrowy z logow lub tabeli users (zwykle 00001)
-- HASLO: wartosc ADMIN_PASSWORD z backend\.env (w zestawie dev: DevWmsAdmin2026)
+==============================================================
+PULAPKA NR 0 (backend resetuje sie w kolko, blad "input_value=...")
+==============================================================
+Backend ma walidator, ktory ODRZUCA dwa konkretne stringi:
+- ADMIN_PASSWORD=Admin123!     -> blad ValidationError, kontener pada
+- ADMIN_PASSWORD=              (puste) -> jw.
+
+Objaw w logach (docker compose logs backend):
+   ValidationError ... ADMIN_PASSWORD ... input_value='Admin123!'
+   "ADMIN_PASSWORD zawiera domyslna wartosc."
+
+Backend pada -> restart on-failure -> wstaje znowu -> pada -> loop.
+Wyglada to jak "problem z haslem w dockerze", ale to walidacja
+w aplikacji, nie w MySQL.
+
+ROZWIAZANIE:
+0) NAJPIERW — Windows: zmienna srodowiskowa NADPISUJE plik .env.
+   Jesli w systemie jest ADMIN_PASSWORD=Admin123!, Pydantic zawsze
+   dostanie Admin123! mimo mocnego hasla w .env.
+   W PowerShell (nowe okno):
+       [Environment]::GetEnvironmentVariable("ADMIN_PASSWORD", "User")
+       [Environment]::GetEnvironmentVariable("ADMIN_PASSWORD", "Machine")
+   Jak cos wyskoczy z "Admin123!" — usun (tymczasowo w tej sesji):
+       Remove-Item Env:ADMIN_PASSWORD
+   Albo trwale: Ustawienia Windows -> Zmienne srodowiskowe -> User
+   -> jesli jest ADMIN_PASSWORD, usun. Zrestartuj terminal / VS Code.
+
+1) Otworz backend\.env i zmien ADMIN_PASSWORD na cokolwiek INNEGO
+   niz dokladnie "Admin123!", np.:
+       ADMIN_PASSWORD=DevWmsAdmin2026
+2) Zapisz plik.
+3) Sprawdz, ze Python czyta TEN plik (w katalogu backend):
+       cd backend
+       Get-Content .env | Select-String ADMIN
+   (Jesli blad "Cannot find path" — plik sie nazywa .env.txt albo jest
+   w zlym folderze.)
+4) W backend wykonaj:
+       docker compose down -v
+       docker compose up --build
+   (lub uruchom uvicorn Z KATALOGU backend: python -m uvicorn ...)
+5) Loguj sie: 00001 / <to co wpisales w ADMIN_PASSWORD> (albo wg bazy)
+
+UWAGA: ADMIN_PASSWORD jest uzywane tylko przy SEEDZIE czystej bazy
+(pierwsze uruchomienie po "down -v"). Jak baza juz istnieje z innym
+admin -> ADMIN_PASSWORD nie ma znaczenia, haslo admina nie zmieni
+sie z poziomu .env. Tylko "down -v" + nowy start tworzy admina od
+nowa z aktualnym ADMIN_PASSWORD.
+
+==============================================================
+PULAPKA NR 1 (90% przypadkow blad "password" / "Access denied")
+==============================================================
+MySQL w Dockerze przy PIERWSZYM starcie zapisuje haslo do wolumenu.
+Pozniejsze zmiany MYSQL_ROOT_PASSWORD w .env / docker-compose.yml
+NIE dzialaja - wolumen trzyma stare haslo.
+
+Objaw 1: w logach kontenera "Access denied for user 'root'@..."
+Objaw 2: "MYSQL_ROOT_PASSWORD specified, but data directory is
+         initialized with another password"
+Objaw 3: backend ciagle restartuje, baza nie chce wstac
+
+ROZWIAZANIE (kasuje dane bazy, zaczyna od zera):
+   cd backend
+   docker compose down -v       <- KLUCZOWE -v
+   docker compose up --build
+
+Po tym admin zostanie zaseedowany od nowa:
+   Login:  00001
+   Haslo:  Admin1234
+
+==============================================================
+PULAPKA NR 2 (konto zablokowane po 5 zlych probach)
+==============================================================
+Po 5 nieudanych logowaniach konto jest blokowane na 5 minut.
+Sprawdzenie:
+   docker compose exec db mysql -uroot -ppassword -e "USE wms_db; SELECT login_code,is_active,failed_login_attempts,locked_until FROM users WHERE email='admin@wms.pl';"
+
+Odblokowanie reczne (bez utraty danych):
+   docker compose exec db mysql -uroot -ppassword -e "USE wms_db; UPDATE users SET failed_login_attempts=0, locked_until=NULL WHERE email='admin@wms.pl';"
+
+
+Domyslne dane administratora (z istniejacej zaseedowanej bazy):
+- LOGIN: 00001
+- HASLO: Admin1234
+
+Uwaga: ADMIN_PASSWORD w backend\.env (DevWmsAdmin2026) jest uzywane TYLKO przy
+pierwszym seedzie na czystej bazie. Jesli baza juz istnieje (kolega dostal
+backup albo poprzedni seed) — haslo to nadal Admin1234.
 
 Uwaga bezpieczenstwa: to sa sekrety developerskie w repo — na produkcji wygeneruj wlasne.
 

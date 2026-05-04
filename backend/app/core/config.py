@@ -1,7 +1,12 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Zawsze `backend/.env` — bez wzgledu na CWD przy `uvicorn` (np. uruchomienie z katalogu nadrzednym).
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -77,8 +82,14 @@ class Settings(BaseSettings):
     def admin_password_must_be_set(cls, v: str) -> str:
         if not v or v == "Admin123!":
             raise ValueError(
-                "ADMIN_PASSWORD zawiera domyslna wartosc. "
-                "Ustaw bezpieczne haslo administratora w pliku .env"
+                "ADMIN_PASSWORD zawiera domyslna/niedozwolona wartosc. "
+                "W backend/.env ustaw inne haslo (np. DevWmsAdmin2026). "
+                "Na Windows zmienna srodowiskowa ADMIN_PASSWORD ma priorytet "
+                "nad plikiem .env — jesli edytujesz .env a nadal widzisz ten blad, "
+                "usun ADMIN_PASSWORD z: Ustawienia -> Zmienne srodowiskowe lub "
+                "w PowerShell: Remove-Item Env:ADMIN_PASSWORD. "
+                "Sprawdz tez profil PowerShell ($PROFILE) czy nie ma tam "
+                "$env:ADMIN_PASSWORD=..."
             )
         return v
 
@@ -86,7 +97,11 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILE,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache()
