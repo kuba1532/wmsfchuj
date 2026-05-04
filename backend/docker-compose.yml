@@ -2,33 +2,57 @@ services:
   db:
     image: mysql:8.0
     container_name: wms_db
-    restart: unless-stopped
+    restart: on-failure:5
+    platform: linux/amd64
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --bind-address=0.0.0.0
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: wms_db
+      MYSQL_ROOT_HOST: "%"
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - wms_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppassword"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppassword", "--silent"]
       interval: 5s
       timeout: 5s
       retries: 30
+      start_period: 30s
+    networks:
+      - wms_net
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: wms_backend
-    restart: unless-stopped
+    restart: on-failure:5
     env_file:
       - .env
+    environment:
+      DATABASE_URL: mysql+mysqldb://root:password@db:3306/wms_db
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - wms_net
 
 volumes:
   wms_mysql_data:
+
+networks:
+  wms_net:
+    driver: bridge

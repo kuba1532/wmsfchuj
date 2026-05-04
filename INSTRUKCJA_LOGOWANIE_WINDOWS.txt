@@ -21,17 +21,32 @@ Domyslne haslo administratora (seed przy pierwszym starcie, czysta baza):
 Uwaga bezpieczenstwa: to sa sekrety developerskie w repo — na produkcji wygeneruj wlasne.
 
 --------------------------------------------------------------
-KROK 1: Uruchom backend i bazę
+KROK 1: Uruchom backend i bazę (Docker)
 --------------------------------------------------------------
+WYMAGANIA:
+- Docker Desktop URUCHOMIONY (zielona ikona w trayu)
+- Tryb: Linux containers (nie Windows containers)
+- Settings -> Resources: min. 4 GB RAM, 2 CPU
+
+OPCJA A — automatyczny start (zalecane):
 1) Otwórz PowerShell.
 2) Wejdź do katalogu backend:
    cd "<SCIEZKA_DO_PROJEKTU>\backend"
-3) Uruchom:
-   docker compose up --build
+3) Uruchom skrypt:
+   powershell -ExecutionPolicy Bypass -File .\start-windows.ps1
 
-Uwaga:
-- Zostaw to okno otwarte.
-- Backend domyślnie działa na: http://localhost:8000
+Skrypt zatrzyma stare kontenery, zbuduje od nowa, poczeka az backend
+bedzie zdrowy i pokaze adresy do logowania.
+
+OPCJA B — recznie:
+1) cd "<SCIEZKA_DO_PROJEKTU>\backend"
+2) docker compose down -v
+3) docker compose up --build
+
+Uwagi:
+- Backend dziala na: http://localhost:8000
+- MySQL na hoscie: port 3307 (zeby nie kolidowal z lokalnym MySQL na Windows)
+- Wewnatrz dockera baza jest pod hostem "db" port 3306 (tak jak w .env)
 
 --------------------------------------------------------------
 KROK 2: Uruchom frontend
@@ -75,8 +90,12 @@ Jeśli database != ok:
 --------------------------------------------------------------
 KROK 5: Sprawdź konto admina w bazie
 --------------------------------------------------------------
-W katalogu backend uruchom:
-docker compose exec db mysql -uroot -ppassword -e "USE wms_db; SELECT id,login_code,email,role,is_active,failed_login_attempts,locked_until FROM users WHERE email='admin@wms.pl';"
+Wariant A — z dockera (jeden kontener db):
+   cd backend
+   docker compose exec db mysql -uroot -ppassword -e "USE wms_db; SELECT id,login_code,email,role,is_active,failed_login_attempts,locked_until FROM users WHERE email='admin@wms.pl';"
+
+Wariant B — z Windowsa przez port 3307 (jesli masz mysql client):
+   mysql -uroot -ppassword -h 127.0.0.1 -P 3307 -e "USE wms_db; SELECT id,login_code,email,role,is_active FROM users WHERE email='admin@wms.pl';"
 
 Ważne:
 - logowanie odbywa się po login_code (np. 00001), NIE po emailu.
@@ -129,3 +148,34 @@ Szybka checklista
 [ ] VITE_API_URL wskazuje localhost:8000/api/v1
 [ ] database=ok na /api/health
 [ ] Logujesz się login_code, nie emailem
+
+--------------------------------------------------------------
+TYPOWE PROBLEMY ZE STARTEM DOCKERA (Windows)
+--------------------------------------------------------------
+1) "error during connect: ... //./pipe/docker_engine"
+   - Docker Desktop nie wystartowal. Otworz aplikacje, poczekaj.
+
+2) "bind: address already in use" na porcie 3306 lub 3307
+   - Zatrzymaj lokalny MySQL: 
+     Stop-Service MySQL80
+   - Albo zmien port w docker-compose.yml (np. 3308:3306).
+
+3) Kontener db ciagle restartuje
+   - Reset wolumenu (skasuje dane bazy):
+     docker compose down -v
+     docker compose up --build
+
+4) "no matching manifest for windows/amd64"
+   - Docker jest w trybie Windows containers.
+   - Right-click na ikone Docker -> "Switch to Linux containers".
+
+5) Backend dalej restartuje (ValueError przy starcie)
+   - Sprawdz czy backend\.env ma:
+     * JWT_SECRET_KEY (min. 32 znaki)
+     * ADMIN_PASSWORD (nie puste)
+   - Po zmianach: docker compose up --build
+
+KOMENDY DIAGNOSTYCZNE:
+   docker compose ps
+   docker compose logs db --tail=80
+   docker compose logs backend --tail=80
