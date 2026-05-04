@@ -10,9 +10,10 @@ Wymagania:
 - Docker Desktop uruchomiony
 - Projekt sklonowany lokalnie
 
-Po git clone masz juz w repozytorium:
-- backend\.env — DATABASE_URL pod Docker Compose, JWT_SECRET_KEY, ADMIN_PASSWORD
-- frontend\.env i frontend\.env.local — VITE_API_URL=http://localhost:8000/api/v1
+Po git clone NIE MA plikow .env w repozytorium (sekrety).
+Utworz je lokalnie ze wzorcow:
+- backend:  skopiuj backend\.env.example -> backend\.env i uzupelnij JWT_SECRET_KEY, ADMIN_PASSWORD
+- frontend: skopiuj frontend\.env.example -> frontend\.env (opcjonalnie .env.local dla nadpisania)
 
 ==============================================================
 PULAPKA NR 0 (backend resetuje sie w kolko, blad "input_value=...")

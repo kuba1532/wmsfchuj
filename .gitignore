@@ -1,0 +1,53 @@
+# --- Sekrety i konfiguracja lokalna ---
+.env
+.env.local
+.env.*.local
+
+# --- Backend (Python) ---
+backend/.venv/
+**/venv/
+.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+dist/
+*.egg
+
+# --- Frontend (Node / Vite) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# --- E2E ---
+e2e_tests/node_modules/
+
+# --- Flutter / mobilka ---
+wms_worker/.dart_tool/
+wms_worker/.flutter-plugins
+wms_worker/.flutter-plugins-dependencies
+wms_worker/**/Flutter/ephemeral/
+wms_worker/build/
+wms_worker/**/Pods/
+wms_worker/**/.symlinks/
+wms_worker/**/local.properties
+wms_worker/**/*.iml
+wms_worker/.idea/
+
+# --- Android ---
+wms_worker/android/.gradle/
+wms_worker/android/app/debug/
+wms_worker/android/app/release/
+wms_worker/android/captures/
+*.jks
+*.keystore
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
