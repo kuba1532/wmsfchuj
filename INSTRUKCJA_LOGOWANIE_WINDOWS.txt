@@ -1,0 +1,121 @@
+WMS - Windows - diagnoza problemu z logowaniem (krok po kroku)
+==============================================================
+
+Cel:
+- Projekt "odpala się", ale logowanie nie działa.
+- Poniższe kroki mają to naprawić bez zgadywania.
+
+Wymagania:
+- Windows + PowerShell
+- Docker Desktop uruchomiony
+- Projekt sklonowany lokalnie
+
+--------------------------------------------------------------
+KROK 1: Uruchom backend i bazę
+--------------------------------------------------------------
+1) Otwórz PowerShell.
+2) Wejdź do katalogu backend:
+   cd "<SCIEZKA_DO_PROJEKTU>\backend"
+3) Uruchom:
+   docker compose up --build
+
+Uwaga:
+- Zostaw to okno otwarte.
+- Backend domyślnie działa na: http://localhost:8000
+
+--------------------------------------------------------------
+KROK 2: Uruchom frontend
+--------------------------------------------------------------
+1) Otwórz DRUGI terminal PowerShell.
+2) Wejdź do katalogu frontend:
+   cd "<SCIEZKA_DO_PROJEKTU>\frontend"
+3) Uruchom:
+   npm install
+   npm run dev
+
+Frontend domyślnie działa na:
+- http://localhost:5173
+
+--------------------------------------------------------------
+KROK 3: Sprawdź konfigurację frontendu (bardzo ważne)
+--------------------------------------------------------------
+Plik:
+- <SCIEZKA_DO_PROJEKTU>\frontend\.env.local
+
+Musi zawierać:
+VITE_API_URL=http://localhost:8000/api/v1
+
+Jeśli zmienisz ten plik:
+- zatrzymaj frontend (Ctrl + C)
+- uruchom ponownie: npm run dev
+
+--------------------------------------------------------------
+KROK 4: Sprawdź czy backend widzi bazę
+--------------------------------------------------------------
+W PowerShell wpisz:
+Invoke-RestMethod http://localhost:8000/api/health
+
+Oczekiwany wynik:
+- status = ok
+- database = ok
+
+Jeśli database != ok:
+- problem jest po stronie połączenia z MySQL.
+
+--------------------------------------------------------------
+KROK 5: Sprawdź konto admina w bazie
+--------------------------------------------------------------
+W katalogu backend uruchom:
+docker compose exec db mysql -uroot -ppassword -e "USE wms_db; SELECT id,login_code,email,role,is_active,failed_login_attempts,locked_until FROM users WHERE email='admin@wms.pl';"
+
+Ważne:
+- logowanie odbywa się po login_code (np. 00001), NIE po emailu.
+
+--------------------------------------------------------------
+KROK 6: Najczęstsza przyczyna
+--------------------------------------------------------------
+Jeśli wpisujesz:
+- login: admin@wms.pl
+to będzie błąd.
+
+Poprawnie:
+- login: login_code z tabeli users
+- hasło: hasło admina
+
+--------------------------------------------------------------
+KROK 7: Reset admina (jeśli dalej nie działa)
+--------------------------------------------------------------
+1) W pliku backend\.env ustaw:
+   ADMIN_EMAIL=admin@wms.pl
+   ADMIN_PASSWORD=<NOWE_HASLO_ADMINA>
+
+2) Usuń istniejącego admina z bazy:
+   docker compose exec db mysql -uroot -ppassword -e "USE wms_db; DELETE FROM users WHERE email='admin@wms.pl';"
+
+3) Zrestartuj backend:
+   docker compose restart backend
+
+4) Sprawdź, jaki login_code dostał nowy admin:
+   docker compose exec db mysql -uroot -ppassword -e "USE wms_db; SELECT login_code,email,role,is_active FROM users WHERE email='admin@wms.pl';"
+
+5) Zaloguj się:
+- login: login_code z punktu 4
+- hasło: to ustawione w ADMIN_PASSWORD
+
+--------------------------------------------------------------
+KROK 8: Jeśli nadal nie działa - co wysłać do diagnostyki
+--------------------------------------------------------------
+Uruchom i wyślij wyniki:
+1) docker compose logs backend --tail=120
+2) docker compose exec db mysql -uroot -ppassword -e "USE wms_db; SELECT login_code,email,role,is_active,failed_login_attempts,locked_until FROM users WHERE email='admin@wms.pl';"
+3) Zawartość frontend\.env.local
+4) URL frontendu z przeglądarki (dokładnie z paska adresu)
+
+--------------------------------------------------------------
+Szybka checklista
+--------------------------------------------------------------
+[ ] Backend działa na localhost:8000
+[ ] Frontend działa na localhost:5173
+[ ] VITE_API_URL wskazuje localhost:8000/api/v1
+[ ] database=ok na /api/health
+[ ] Logujesz się login_code, nie emailem

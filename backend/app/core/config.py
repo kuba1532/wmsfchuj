@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str
+    DB_POOL_SIZE: int = 30
+    DB_MAX_OVERFLOW: int = 60
+    DB_POOL_TIMEOUT_SECONDS: int = 30
+    DB_POOL_RECYCLE_SECONDS: int = 1800
 
     # JWT
     JWT_SECRET_KEY: str
