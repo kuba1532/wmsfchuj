@@ -40,6 +40,7 @@ export const locationSchema = z.object({
 
 export const documentPZSchema = z.object({
   supplierId: z.number().min(1, 'Wybierz dostawcę z katalogu'),
+  targetLocationId: z.number().min(1, 'Wybierz lokalizację przyjęcia'),
   items: z
     .array(
       z.object({
@@ -69,7 +70,8 @@ export const documentMMSchema = z
   });
 
 export const documentRWSchema = z.object({
-  recipient: z.string().min(2, 'Odbiorca jest wymagany'),
+  fromLocation: z.string().min(1, 'Wybierz lokalizację pobrania'),
+  recipientId: z.number().min(1, 'Wybierz odbiorcę'),
   items: z
     .array(
       z.object({

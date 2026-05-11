@@ -2,3 +2,4 @@
 #include "Generated.xcconfig"
 // Xcode 16 / Swift 6: explicit modules potrafią zepsuć @import mobile_scanner w GeneratedPluginRegistrant.m
 SWIFT_ENABLE_EXPLICIT_MODULES = NO
+FRAMEWORK_SEARCH_PATHS = $(inherited) "$(PODS_CONFIGURATION_BUILD_DIR)"

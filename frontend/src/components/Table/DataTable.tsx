@@ -1,4 +1,5 @@
 import { DataGrid, type GridColDef, type GridSortModel } from '@mui/x-data-grid';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 
 interface DataTableProps {
   rows: Record<string, unknown>[];
@@ -12,6 +13,7 @@ const DataTable = ({ rows, columns, pageSize = 10, defaultSort }: DataTableProps
     <DataGrid
       rows={rows}
       columns={columns}
+      localeText={dataGridLocaleText}
       pageSizeOptions={[10, 25, 50]}
       initialState={{
         pagination: { paginationModel: { pageSize } },

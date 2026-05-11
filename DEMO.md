@@ -71,6 +71,43 @@ Logowanie demo magazyniera: **`00002`** / **`Demo1234`** (o ile nie zmieniono `D
 
 ---
 
+## Reset przed pokazem („świeży” flow)
+
+Jeden skrypt (Docker + cache Vite + `flutter clean`; **nie usuwa** Dockera jeśli nie masz go w PATH):
+
+```bash
+bash scripts/reset_demo_stack.sh
+```
+
+- **Backend:** `docker compose down -v` kasuje wolumen MySQL → przy kolejnym `up` baza jest pusta i seed z `main.py` znów utworzy konta (`00001`, `00002`) i dane demo.
+- **Frontend:** usuwa cache Vite; w przeglądarce warto **wylogować się** lub wyczyścić `localStorage` dla originu frontu.
+- **Mobilka:** po `flutter clean` odinstaluj apkę z urządzenia / usuń dane aplikacji — token JWT jest w `SharedPreferences`.
+
+---
+
+## Pokaz — kolejność kroków (web + mobilka, jeden scenariusz)
+
+**Założenie:** świeża baza po `scripts/reset_demo_stack.sh`, backend `http://127.0.0.1:8000`, konta z `DEMO.md`.
+
+### A. Panel web (np. obrona na projektorze)
+
+1. Uruchom frontend: `cd frontend && npm run dev` (lub `-- --host` z LAN).
+2. Zaloguj się adminem (`00001` + hasło z `.env`).
+3. Opcjonalnie: **Produkty / Lokalizacje** — pokaż, że słowniki są załadowane (seed).
+4. **Przyjęcia PZ:** utwórz PZ (dostawca SUP-001, pozycja, miejsce odłożenia np. STO-01) → **Zarejestruj** — towar na buforze, zadania PUTAWAY.
+5. **Zadania** (web): pokaż listę + start/complete albo wyjaśnij, że robi to magazynier na telefonie.
+6. **Stany / Ledger** — potwierdzenie ruchu magazynowego (opcjonalnie).
+
+### B. Aplikacja Flutter (magazynier)
+
+1. `cd wms_worker && flutter run -d macos` (lub telefon z `WMS_API_BASE=http://<IP>:8000`).
+2. Logowanie **`00002`** / **`Demo1234`**.
+3. **Zadania** — filtr „Odłożenie (PZ)”; **Biorę zadanie** → **Potwierdź (skan miejsca)** — wpisz kod regału (np. STO-01).
+4. **PZ** — drugi wątek: nowe przyjęcie z **„Skanuj kod”** (SKU) jak w teście integracyjnym (`integration_test/wms_flow_golden_test.dart`).
+5. Pełna automatyczna ścieżka zrzutów do PPTX: `flutter test integration_test/wms_flow_golden_test.dart -d macos` → `python3 scripts/build_flutter_flow_pptx.py`.
+
+---
+
 ## Typowe problemy
 
 | Problem | Działanie |

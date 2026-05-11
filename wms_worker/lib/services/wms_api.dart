@@ -100,17 +100,37 @@ class WmsApi {
     return UserInfo.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
-  Future<List<TaskItem>> fetchTasks({int page = 1, int pageSize = 30}) async {
-    final res = await _httpT(
-      http.get(
-        _u('/tasks', {'page': '$page', 'page_size': '$pageSize'}),
-        headers: _headers(),
-      ),
-    );
-    _throwIfBad(res);
-    final m = jsonDecode(res.body) as Map<String, dynamic>;
-    final items = m['items'] as List<dynamic>;
-    return items.map((e) => TaskItem.fromJson(e as Map<String, dynamic>)).toList();
+  /// Pobiera wszystkie strony wyniku (jak pełna lista na webie — bez ucinania po 1. stronie).
+  Future<List<TaskItem>> fetchTasks({
+    bool omitTerminal = false,
+    int pageSize = 100,
+  }) async {
+    final size = pageSize.clamp(1, 100);
+    final all = <TaskItem>[];
+    var page = 1;
+    while (true) {
+      final q = <String, String>{
+        'page': '$page',
+        'page_size': '$size',
+      };
+      if (omitTerminal) q['omit_terminal'] = 'true';
+      final res = await _httpT(
+        http.get(
+          _u('/tasks', q),
+          headers: _headers(),
+        ),
+      );
+      _throwIfBad(res);
+      final m = jsonDecode(res.body) as Map<String, dynamic>;
+      final raw = m['items'] as List<dynamic>;
+      for (final e in raw) {
+        all.add(TaskItem.fromJson(e as Map<String, dynamic>));
+      }
+      final totalPages = m['pages'] is int ? m['pages'] as int : int.tryParse('${m['pages']}') ?? 1;
+      if (page >= totalPages || raw.isEmpty) break;
+      page++;
+    }
+    return all;
   }
 
   Future<TaskItem> startTask(int id) async {
@@ -181,13 +201,18 @@ class WmsApi {
 
   Future<DocumentHeader> createPz({
     required int supplierId,
+    required int toLocationId,
     required List<Map<String, dynamic>> items,
   }) async {
     final res = await _httpT(
       http.post(
         _u('/documents/pz'),
         headers: _headers(jsonBody: true),
-        body: jsonEncode({'supplier_id': supplierId, 'items': items}),
+        body: jsonEncode({
+          'supplier_id': supplierId,
+          'to_location_id': toLocationId,
+          'items': items,
+        }),
       ),
     );
     _throwIfBad(res);
@@ -239,6 +264,29 @@ class WmsApi {
     return all;
   }
 
+  /// Aktywni odbiorcy RW — `page_size` API max 200.
+  Future<List<RecipientItem>> fetchRecipients({String search = '', int pageSize = 200}) async {
+    final size = pageSize.clamp(1, 200);
+    final all = <RecipientItem>[];
+    for (var page = 1; page <= 50; page++) {
+      final res = await _httpT(
+        http.get(
+          _u('/recipients', {'page': '$page', 'page_size': '$size', 'search': search}),
+          headers: _headers(),
+        ),
+      );
+      _throwIfBad(res);
+      final m = jsonDecode(res.body) as Map<String, dynamic>;
+      final raw = m['items'] as List<dynamic>;
+      for (final e in raw) {
+        all.add(RecipientItem.fromJson(e as Map<String, dynamic>));
+      }
+      final total = m['total'] is int ? m['total'] as int : int.tryParse('${m['total']}') ?? 0;
+      if (page * size >= total || raw.isEmpty) break;
+    }
+    return all;
+  }
+
   Future<List<StockRow>> fetchStock({String search = '', int pageSize = 30}) async {
     final res = await _httpT(
       http.get(
@@ -272,6 +320,19 @@ class WmsApi {
     return DocumentHeader.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Ten sam endpoint co panel webowy „Zatwierdź” (MM/RW: zatwierdzenie + zadania + status).
+  Future<DocumentHeader> confirmDocument(int documentId) async {
+    final res = await _httpT(
+      http.post(
+        _u('/documents/$documentId/confirm'),
+        headers: _headers(),
+      ),
+    );
+    _throwIfBad(res);
+    return DocumentHeader.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Skrót mobilny (jedno kliknięcie); dla spójności z webem preferuj [confirmDocument].
   Future<DocumentHeader> submitToTasks(int documentId) async {
     final res = await _httpT(
       http.post(
@@ -283,15 +344,21 @@ class WmsApi {
     return DocumentHeader.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// RW wymaga jawnej lokalizacji pobrania i odbiorcy (`recipient_id`) — jak API webowe.
   Future<DocumentHeader> createRw({
-    required String recipient,
+    required int fromLocationId,
+    required int recipientId,
     required List<Map<String, dynamic>> items,
   }) async {
     final res = await _httpT(
       http.post(
         _u('/documents/rw'),
         headers: _headers(jsonBody: true),
-        body: jsonEncode({'recipient': recipient, 'items': items}),
+        body: jsonEncode({
+          'from_location_id': fromLocationId,
+          'recipient_id': recipientId,
+          'items': items,
+        }),
       ),
     );
     _throwIfBad(res);

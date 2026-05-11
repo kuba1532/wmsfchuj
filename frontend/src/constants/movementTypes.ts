@@ -8,8 +8,8 @@ export enum MovementType {
 
 export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   [MovementType.RECEIVE]: 'Przyjęcie',
-  [MovementType.PUTAWAY]: 'Rozmieszczenie',
-  [MovementType.MOVE]: 'Przesunięcie',
+  [MovementType.PUTAWAY]: 'Odłożenie po przyjęciu',
+  [MovementType.MOVE]: 'Przeniesienie w magazynie',
   [MovementType.PICK]: 'Wydanie',
   [MovementType.CORRECTION]: 'Korekta inwentaryzacyjna',
 };

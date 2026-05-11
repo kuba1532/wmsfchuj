@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,15 +17,40 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _login = TextEditingController();
   final _password = TextEditingController();
+  final _apiBaseInput = TextEditingController();
   final _store = SessionStore();
   bool _loading = false;
+  bool _savingUrl = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiBaseInput.text = kApiBase;
+  }
 
   @override
   void dispose() {
     _login.dispose();
     _password.dispose();
+    _apiBaseInput.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveApiUrl() async {
+    setState(() => _savingUrl = true);
+    try {
+      final normalized = normalizeWmsApiBase(_apiBaseInput.text);
+      await _store.saveApiBase(normalized);
+      setResolvedApiBase(normalized);
+      if (!mounted) return;
+      setState(() => _apiBaseInput.text = kApiBase);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Zapisano serwer: $kApiBase')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingUrl = false);
+    }
   }
 
   Future<void> _submit() async {
@@ -43,13 +69,20 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => MainShell(
             accessToken: r.access,
             userName: '${r.user.firstName} ${r.user.lastName}',
+            userId: r.user.id,
           ),
         ),
       );
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Błąd połączenia: $e');
+      setState(() {
+        _error =
+            'Brak połączenia z API ($kApiBase).\n\n'
+            'Na iPhone wpisz poniżej adres komputera z backendem (np. http://192.168.0.10:8000), '
+            'naciśnij „Zapisz adres”, potem spróbuj zalogować ponownie.\n\n'
+            'Szczegóły: $e';
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -59,12 +92,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               Text(
                 'WMS — pracownik',
                 style: Theme.of(context).textTheme.headlineSmall,
@@ -72,11 +105,47 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'API: $kApiBase',
+                'Aktywny serwer: $kApiBase',
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 40),
+              if (!kIsWeb &&
+                  (kApiBase.contains('127.0.0.1') || kApiBase.toLowerCase().contains('localhost'))) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Na prawdziwym telefonie 127.0.0.1 to ten telefon, nie Mac. Ustaw IP komputera poniżej.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _apiBaseInput,
+                decoration: const InputDecoration(
+                  labelText: 'Adres API (np. http://192.168.0.10:8000)',
+                  hintText: 'http://IP_KOMPUTERA:8000',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _savingUrl ? null : _saveApiUrl,
+                icon: _savingUrl
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined, size: 20),
+                label: const Text('Zapisz adres serwera'),
+              ),
+              const SizedBox(height: 28),
               TextField(
                 controller: _login,
                 decoration: const InputDecoration(
@@ -103,7 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
                 Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ],
-              const Spacer(),
+              const SizedBox(height: 32),
               FilledButton(
                 onPressed: _loading ? null : _submit,
                 child: _loading
@@ -114,6 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       )
                     : const Text('Zaloguj'),
               ),
+              const SizedBox(height: 24),
             ],
           ),
         ),

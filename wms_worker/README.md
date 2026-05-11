@@ -61,3 +61,23 @@ Skaner używa `mobile_scanner` (kamera).
 ```bash
 cd wms_worker && dart analyze lib
 ```
+
+## Zrzuty ekranu + prezentacja przepływu (macOS)
+
+Automatyczny test przechodzi **pełny proces operacyjny**: logowanie (00002), lista zadań, **nowe PZ** (dostawca Northwind, „skan” **PRD-1001**, ilość, odłożenie **STO-01**, utworzenie dokumentu, **Zarejestruj**), potem **zadanie odłożenia**: „Biorę zadanie” → **Potwierdź** z kodem **STO-01** → podgląd zakończonych. PNG trafiają do `build/integration_screenshots/` (`wms_ops_*.png`).
+
+Wymagania: działający backend na `http://127.0.0.1:8000`, profil **Debug** macOS (sandbox wyłączony tylko w debug — umożliwia zapis plików z testu; dodane `network.client` w Release).
+
+```bash
+cd wms_worker
+flutter test integration_test/wms_flow_golden_test.dart -d macos
+```
+
+Z repo głównego — skrypt + PPTX:
+
+```bash
+./scripts/run_flutter_flow_screenshots.sh
+python3 scripts/build_flutter_flow_pptx.py
+```
+
+Wynik: `prezentacja_demo/WMS_Flutter_przeplyw_mobilka.pptx` (układ pod obronę: okładka, agenda, cel, architektura, scenariusz, 15 slajdów z dużym ekranem, podsumowanie; notatki dla mówcy). Po zmianie kodu UI warto ponownie wygenerować PNG (`pixelRatio` zrzutu: 3).

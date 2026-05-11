@@ -101,6 +101,10 @@ def seed_demo_tasks() -> None:
     from datetime import datetime, timezone
     from decimal import Decimal
 
+    from app.seed_presentation import DEMO_PRODUCTS
+
+    _demo_names = {x["sku"]: x["name"] for x in DEMO_PRODUCTS}
+
     from app.models.models import (
         User,
         Product,
@@ -124,13 +128,23 @@ def seed_demo_tasks() -> None:
 
         p1 = db.query(Product).filter(Product.sku == "PRD-1001").first()
         if not p1:
-            p1 = Product(sku="PRD-1001", name="Komponent montażowy A", unit="szt", is_active=True)
+            p1 = Product(
+                sku="PRD-1001",
+                name=_demo_names["PRD-1001"],
+                unit="szt",
+                is_active=True,
+            )
             db.add(p1)
             db.flush()
 
         p2 = db.query(Product).filter(Product.sku == "PRD-1002").first()
         if not p2:
-            p2 = Product(sku="PRD-1002", name="Zestaw logistyczny B", unit="szt", is_active=True)
+            p2 = Product(
+                sku="PRD-1002",
+                name=_demo_names["PRD-1002"],
+                unit="szt",
+                is_active=True,
+            )
             db.add(p2)
             db.flush()
 
@@ -205,6 +219,34 @@ def seed_demo_tasks() -> None:
         db.close()
 
 
+def seed_recipients() -> None:
+    """Katalog odbiorców RW (wybór z listy) — tylko gdy tabela pusta."""
+    from app.models.models import Recipient
+
+    db = SessionLocal()
+    try:
+        if db.query(Recipient).first():
+            return
+        catalog = [
+            ("ODB-001", "Janex Sp. z o.o. — odbiór Warszawa Mokotów"),
+            ("ODB-002", "Sklep „Narzędzie+” — salon Kraków, ul. Fabryczna"),
+            ("ODB-003", "Zakład produkcyjny — Hala B, Łódź"),
+            ("ODB-004", "DPD Polska — nadanie zbiorcze (B2B)"),
+            ("ODB-005", "Odbiór osobisty — biuro centralne"),
+            ("ODB-006", "Market budowlany „Dom i Ogród” — Poznań"),
+        ]
+        for code, name in catalog:
+            db.add(Recipient(code=code, name=name, is_active=True))
+        db.commit()
+        logger.info("Dodano %s odbiorcow demo (recipients).", len(catalog))
+    except Exception:
+        db.rollback()
+        logger.exception("Blad podczas seedu odbiorcow.")
+        raise
+    finally:
+        db.close()
+
+
 def seed_suppliers() -> None:
     """Domyślny dostawca + powiązania aktywnych produktów (dla PZ)."""
     from app.models.models import Supplier, SupplierProduct, Product
@@ -228,13 +270,51 @@ def seed_suppliers() -> None:
         db.close()
 
 
+def ensure_supplier_product_links() -> None:
+    """Dopisuje brakujące powiązania SUP-001 ↔ produkty (PZ po skanie SKU).
+
+    Pierwszy seed dostawcy robił `if Supplier.first(): return`, więc nowe produkty
+    mogły trafić do bazy bez wpisu w supplier_products — wtedy mobilka pokazuje
+    „Brak produktów” przy wybranym dostawcy."""
+    from app.models.models import Supplier, SupplierProduct, Product
+
+    db = SessionLocal()
+    try:
+        s = db.query(Supplier).filter(Supplier.code == "SUP-001").first()
+        if not s or not s.is_active:
+            return
+        linked = {
+            sp.product_id
+            for sp in db.query(SupplierProduct).filter(SupplierProduct.supplier_id == s.id).all()
+        }
+        added = 0
+        for p in db.query(Product).filter(Product.is_active.is_(True)).all():
+            if p.id not in linked:
+                db.add(SupplierProduct(supplier_id=s.id, product_id=p.id))
+                added += 1
+        if added:
+            db.commit()
+            logger.info("Uzupelniono supplier_products: +%s produktow dla SUP-001.", added)
+    except Exception:
+        db.rollback()
+        logger.exception("Blad podczas uzupelniania supplier_products.")
+        raise
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_migrations()
     seed_admin()
     seed_demo_worker()
     seed_demo_tasks()
+    from app.seed_presentation import run_presentation_seed_if_enabled
+
+    run_presentation_seed_if_enabled(settings)
+    seed_recipients()
     seed_suppliers()
+    ensure_supplier_product_links()
     yield
 
 

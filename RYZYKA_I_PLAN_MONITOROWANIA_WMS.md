@@ -1,5 +1,7 @@
 # Ryzyka projektowe i plan monitorowania WMS
 
+**Excel (do przekazania koledze / weryfikatorowi):** [`RYZYKA_I_PLAN_MONITOROWANIA_WMS.xlsx`](./RYZYKA_I_PLAN_MONITOROWANIA_WMS.xlsx) — arkusze: *Instrukcja*, *Ryzyka*, *Plan monitorowania*, *Audyt techniczny*. Ponowna generacja: `python scripts/generate_risks_monitoring_xlsx.py` (wymaga `openpyxl`).
+
 ## 1. Ryzyka projektowe (techniczne i komunikacyjne)
 
 | ID | Ryzyko | Typ | Poziom | Prawd. | Wpływ | Poziom investigacji | Mitigacja |

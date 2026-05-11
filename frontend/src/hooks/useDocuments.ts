@@ -8,7 +8,15 @@ export interface DocumentLineItem {
   id: number;
   product_id: number;
   quantity: number;
+  putaway_to_location_id?: number | null;
+  putaway_to_location_code?: string | null;
   product?: { id: number; sku: string; name: string; unit?: string } | null;
+}
+
+export interface DocumentLinkedTaskBrief {
+  id: number;
+  type: string;
+  status: string;
 }
 
 export interface DocumentItem {
@@ -26,6 +34,7 @@ export interface DocumentItem {
   created_by_id: number;
   created_at: string;
   items?: DocumentLineItem[];
+  related_tasks?: DocumentLinkedTaskBrief[];
 }
 
 interface UseDocumentsOptions {
@@ -42,6 +51,7 @@ interface UseDocumentsReturn {
   refresh: () => void;
   createPZ: (data: {
     supplier_id: number;
+    to_location_id: number;
     items: { product_id: number; quantity: number }[];
   }) => Promise<DocumentItem>;
   pzStart: (id: number) => Promise<void>;
@@ -52,7 +62,8 @@ interface UseDocumentsReturn {
     items: { product_id: number; quantity: number }[];
   }) => Promise<DocumentItem>;
   createRW: (data: {
-    recipient: string;
+    from_location_id: number;
+    recipient_id: number;
     items: { product_id: number; quantity: number }[];
   }) => Promise<DocumentItem>;
   confirmDocument: (id: number) => Promise<void>;
@@ -63,7 +74,7 @@ export function useDocuments({
   docType = '',
   search = '',
   page = 1,
-  pageSize = 25,
+  pageSize = 30,
 }: UseDocumentsOptions = {}): UseDocumentsReturn {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -94,7 +105,8 @@ export function useDocuments({
     fetchDocuments();
   }, [fetchDocuments]);
 
-  useAutoRefresh(fetchDocuments);
+  // Dokumenty odświeżamy częściej, żeby szybciej widzieć zmiany z mobilki/web.
+  useAutoRefresh(fetchDocuments, { intervalMs: 10 * 1000 });
 
   const createPZ = useCallback(
     async (data: Parameters<UseDocumentsReturn['createPZ']>[0]) => {
@@ -118,7 +130,7 @@ export function useDocuments({
   const pzComplete = useCallback(
     async (id: number) => {
       await apiClient.post(`/documents/${id}/pz/complete`);
-      showSuccess('Przyjęcie zakończono — utworzono zadania odłożenia.');
+      showSuccess('Przyjęcie zarejestrowane — stan zwiększony na wskazanej lokalizacji.');
       fetchDocuments();
     },
     [fetchDocuments, showSuccess],

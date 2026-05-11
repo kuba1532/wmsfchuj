@@ -10,8 +10,22 @@ import 'screens/main_shell.dart';
 import 'services/session_store.dart';
 import 'services/wms_api.dart';
 
+Future<void> _initApiBaseFromPrefsOrEnv() async {
+  if (kApiBaseFromEnvironment.isNotEmpty) {
+    setResolvedApiBase(kApiBaseFromEnvironment);
+    return;
+  }
+  final saved = await SessionStore().readSavedApiBase();
+  if (saved != null && saved.isNotEmpty) {
+    setResolvedApiBase(saved);
+    return;
+  }
+  setResolvedApiBase('http://127.0.0.1:8000');
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _initApiBaseFromPrefsOrEnv();
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     if (kDebugMode) {
@@ -73,18 +87,23 @@ class _BootstrapState extends State<_Bootstrap> {
         _child = MainShell(
           accessToken: token,
           userName: '${me.firstName} ${me.lastName}',
+          userId: me.id,
         );
       });
-    } on ApiException catch (_) {
-      await SessionStore().clear();
+    } on ApiException catch (e) {
+      // Tylko wygaśnięty / unieważniony token czyścimy — timeout lub brak sieci nie kasuje sesji.
+      if (e.statusCode == 401 || e.statusCode == 403) {
+        await SessionStore().clear();
+      }
       if (!mounted) return;
       setState(() => _child = const LoginScreen());
     } on TimeoutException catch (_) {
-      await SessionStore().clear();
       if (!mounted) return;
       setState(() => _child = const LoginScreen());
-    } catch (_) {
-      await SessionStore().clear();
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint('Bootstrap fetchMe: $e\n$st');
+      }
       if (!mounted) return;
       setState(() => _child = const LoginScreen());
     }

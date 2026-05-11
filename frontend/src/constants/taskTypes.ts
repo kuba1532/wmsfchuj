@@ -6,8 +6,8 @@ export enum TaskType {
 }
 
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
-  [TaskType.PUTAWAY]: 'Rozmieszczanie',
-  [TaskType.MOVE]: 'Przesunięcie',
-  [TaskType.PICKING]: 'Kompletacja',
+  [TaskType.PUTAWAY]: 'Odłożenie po przyjęciu',
+  [TaskType.MOVE]: 'Przeniesienie w magazynie',
+  [TaskType.PICKING]: 'Kompletacja (zbieranie)',
   [TaskType.INVENTORY]: 'Inwentaryzacja',
 };

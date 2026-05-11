@@ -47,4 +47,17 @@ post_install do |installer|
   installer.pods_project.build_configurations.each do |config|
     config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
   end
+
+  # Xcode/Flutter: przy niestandardowym CONFIGURATION_BUILD_DIR
+  # skrypt [CP] Embed Pods Frameworks szuka frameworków pod BUILT_PRODUCTS_DIR
+  # i potrafi kończyć się "source: unbound variable".
+  frameworks_script = File.join(__dir__, 'Pods', 'Target Support Files', 'Pods-Runner', 'Pods-Runner-frameworks.sh')
+  if File.exist?(frameworks_script)
+    script = File.read(frameworks_script)
+    patched = script.gsub(
+      'install_framework "${BUILT_PRODUCTS_DIR}/',
+      'install_framework "${PODS_CONFIGURATION_BUILD_DIR}/'
+    )
+    File.write(frameworks_script, patched) if patched != script
+  end
 end

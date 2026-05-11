@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { StockStatus } from '@/constants/stockStatuses';
-import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { useChangeSignal } from '@/hooks/useChangeSignal';
 
 export interface StockItem {
   id: number;
@@ -20,6 +20,7 @@ interface UseStockOptions {
   statusFilter?: string;
   page?: number;
   pageSize?: number;
+  autoRefreshEnabled?: boolean;
 }
 
 interface UseStockReturn {
@@ -40,6 +41,7 @@ export function useStock({
   statusFilter = '',
   page = 1,
   pageSize = 50,
+  autoRefreshEnabled = true,
 }: UseStockOptions = {}): UseStockReturn {
   const [stock, setStock] = useState<StockItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -70,7 +72,11 @@ export function useStock({
     fetchStock();
   }, [fetchStock]);
 
-  useAutoRefresh(fetchStock);
+  // Odświeżaj tylko po wykryciu zmiany w systemie (web/mobilka), bez "na pale".
+  useChangeSignal(fetchStock, {
+    enabled: autoRefreshEnabled,
+    intervalMs: 2000,
+  });
 
   const changeStatus = useCallback(
     async (id: number, status: StockStatus, version?: number, quantity?: number) => {

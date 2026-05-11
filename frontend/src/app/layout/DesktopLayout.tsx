@@ -8,6 +8,7 @@ import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import { useAuth } from '@/context/AuthContext';
 import { useThemeMode } from '@/context/ThemeContext';
 import useSessionTimeout from '@/hooks/useSessionTimeout';
+import { roleLabelPl } from '@/constants/roles';
 
 const parsePositiveInt = (value: unknown, fallback: number) => {
   const n = Number(value);
@@ -64,7 +65,7 @@ const DesktopLayout = () => {
         >
           <Toolbar sx={{ justifyContent: 'flex-end', gap: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              {user?.email} ({user?.role})
+              {user?.email} ({roleLabelPl(user?.role)})
             </Typography>
             <Tooltip title={mode === 'light' ? 'Tryb ciemny' : 'Tryb jasny'}>
               <IconButton onClick={toggleTheme} size="small">

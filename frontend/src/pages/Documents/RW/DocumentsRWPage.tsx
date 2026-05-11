@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Add, Search, Delete, Visibility, Close, Download } from '@mui/icons-material';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
   DocumentStatus,
@@ -26,19 +26,32 @@ import {
 } from '@/constants/documentStatuses';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 import { documentRWSchema, type DocumentRWFormData } from '@/utils/validators';
-import FormField from '@/components/Form/FormField';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
 import PageHeader from '@/components/Table/PageHeader';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
 import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
+import {
+  DocumentRelatedTasksCell,
+  DocumentRelatedTasksDetailSection,
+} from '@/components/DocumentRelatedTasks/DocumentRelatedTasks';
 import apiClient from '@/api/client';
 
 interface ProductOption {
   id: number;
   sku: string;
+  name: string;
+}
+interface LocationOption {
+  id: number;
+  code: string;
+}
+interface RecipientOption {
+  id: number;
+  code: string;
   name: string;
 }
 
@@ -49,6 +62,8 @@ const DocumentsRWPage = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [recipients, setRecipients] = useState<RecipientOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { canCreate } = usePermissions();
   const { showError } = useNotification();
@@ -66,18 +81,29 @@ const DocumentsRWPage = () => {
     formState: { errors },
   } = useForm<DocumentRWFormData>({
     resolver: zodResolver(documentRWSchema),
-    defaultValues: { recipient: '', items: [{ productId: 0, quantity: 1 }] },
+    defaultValues: {
+      fromLocation: '',
+      recipientId: 0,
+      items: [{ productId: 0, quantity: 1 }],
+    },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: 'items' });
 
   useEffect(() => {
     if (!createOpen) return;
-    apiClient
-      .get('/products?page=1&page_size=100')
-      .then((res) => setProducts(res.data.items ?? []))
-      .catch(() => showError('Nie udało się pobrać produktów.'));
-  }, [createOpen]);
+    Promise.all([
+      apiClient.get('/products?page=1&page_size=100'),
+      apiClient.get('/locations?page=1&page_size=200'),
+      apiClient.get('/recipients?page=1&page_size=200'),
+    ])
+      .then(([pRes, lRes, rRes]) => {
+        setProducts(pRes.data.items ?? []);
+        setLocations(lRes.data.items ?? []);
+        setRecipients(rRes.data.items ?? []);
+      })
+      .catch(() => showError('Nie udało się pobrać słowników.'));
+  }, [createOpen, showError]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -90,12 +116,18 @@ const DocumentsRWPage = () => {
   const handleCreate = async (data: DocumentRWFormData) => {
     setIsSubmitting(true);
     try {
+      const fromLoc = locations.find((l) => l.code === data.fromLocation);
+      if (!fromLoc) {
+        showError('Nieprawidłowa lokalizacja pobrania.');
+        return;
+      }
       await createRW({
-        recipient: data.recipient,
+        from_location_id: fromLoc.id,
+        recipient_id: data.recipientId,
         items: data.items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
       });
+      reset({ fromLocation: '', recipientId: 0, items: [{ productId: 0, quantity: 1 }] });
       setCreateOpen(false);
-      reset({ recipient: '', items: [{ productId: 0, quantity: 1 }] });
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
@@ -138,10 +170,16 @@ const DocumentsRWPage = () => {
       valueFormatter: (value: string) =>
         value ? new Date(value).toLocaleDateString('pl-PL') : '—',
     },
+    {
+      field: 'from_location_code',
+      headerName: 'Pobranie z',
+      width: 130,
+      valueGetter: (_value, row) => (row as DocumentItem).from_location_code ?? '—',
+    },
     { field: 'recipient', headerName: 'Odbiorca', flex: 1, minWidth: 160 },
     {
       field: 'status',
-      headerName: 'Status',
+      headerName: 'Stan dokumentu',
       width: 150,
       renderCell: (params) => (
         <Chip
@@ -153,6 +191,18 @@ const DocumentsRWPage = () => {
             fontWeight: 600,
           }}
         />
+      ),
+    },
+    {
+      field: 'related_tasks',
+      headerName: 'Powiązane zadania',
+      description: 'Kolejność 1., 2., … oraz #id — jak w module Zadania.',
+      minWidth: 280,
+      flex: 0.5,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <DocumentRelatedTasksCell tasks={(params.row as DocumentItem).related_tasks} />
       ),
     },
     {
@@ -228,6 +278,7 @@ const DocumentsRWPage = () => {
           pageSizeOptions={[10, 25]}
           initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />
@@ -237,7 +288,7 @@ const DocumentsRWPage = () => {
         open={createOpen}
         onClose={() => {
           setCreateOpen(false);
-          reset({ recipient: '', items: [{ productId: 0, quantity: 1 }] });
+          reset({ fromLocation: '', recipientId: 0, items: [{ productId: 0, quantity: 1 }] });
         }}
         onSubmit={handleSubmit(handleCreate)}
         title="Nowe wydanie (RW)"
@@ -245,11 +296,63 @@ const DocumentsRWPage = () => {
         submitLabel="Utwórz dokument"
         isSubmitting={isSubmitting}
       >
-        <FormField
-          label="Odbiorca"
-          placeholder="np. Produkcja Hala A"
-          error={errors.recipient}
-          {...register('recipient')}
+        <Controller
+          name="fromLocation"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              select
+              label="Lokalizacja pobrania"
+              size="small"
+              fullWidth
+              value={field.value}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              name={field.name}
+              inputRef={field.ref}
+              error={!!errors.fromLocation}
+              helperText={
+                errors.fromLocation?.message ?? 'Skąd system pobierze towar przy zatwierdzeniu RW'
+              }
+              slotProps={{ select: { native: true } }}
+              sx={{ mb: 2 }}
+            >
+              <option value="">-- Wybierz lokalizację --</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.code}>
+                  {l.code}
+                </option>
+              ))}
+            </TextField>
+          )}
+        />
+        <Controller
+          name="recipientId"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              select
+              label="Odbiorca"
+              size="small"
+              fullWidth
+              value={field.value}
+              onChange={(e) => field.onChange(Number(e.target.value))}
+              onBlur={field.onBlur}
+              name={field.name}
+              inputRef={field.ref}
+              error={!!errors.recipientId}
+              helperText={errors.recipientId?.message}
+              slotProps={{ select: { native: true } }}
+              sx={{ mb: 1 }}
+            >
+              <option value={0}>-- Wybierz odbiorcę --</option>
+              {recipients.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.code} — {r.name}
+                </option>
+              ))}
+            </TextField>
+          )}
         />
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
@@ -337,6 +440,10 @@ const DocumentsRWPage = () => {
                   label: 'Data',
                   value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
                 },
+                {
+                  label: 'Lokalizacja pobrania',
+                  value: selectedDoc.from_location_code ?? '—',
+                },
                 { label: 'Odbiorca', value: selectedDoc.recipient ?? '—' },
               ].map(({ label, value }) => (
                 <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -348,7 +455,7 @@ const DocumentsRWPage = () => {
               ))}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Status
+                  Stan dokumentu
                 </Typography>
                 <Chip
                   label={DOCUMENT_STATUS_LABELS[selectedDoc.status]}
@@ -361,6 +468,8 @@ const DocumentsRWPage = () => {
                 />
               </Box>
 
+              <Divider />
+              <DocumentRelatedTasksDetailSection tasks={selectedDoc.related_tasks} />
               <Divider />
               <Typography variant="subtitle2" fontWeight={600}>
                 Pozycje dokumentu ({selectedDoc.items?.length ?? 0})
@@ -443,6 +552,10 @@ const DocumentsRWPage = () => {
                   {
                     label: 'Data',
                     value: new Date(selectedDoc.created_at).toLocaleDateString('pl-PL'),
+                  },
+                  {
+                    label: 'Pobranie z',
+                    value: selectedDoc.from_location_code ?? '—',
                   },
                   { label: 'Odbiorca', value: selectedDoc.recipient ?? '—' },
                 ],

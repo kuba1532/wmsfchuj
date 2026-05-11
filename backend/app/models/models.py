@@ -199,6 +199,20 @@ class SupplierProduct(Base):
     product = relationship("Product")
 
 
+class Recipient(Base):
+    """Odbiorca wydania (RW) — wybór z listy zamiast dowolnego tekstu."""
+
+    __tablename__ = "recipients"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+
+
 class Document(Base):
     __tablename__ = "documents"
 
@@ -230,9 +244,11 @@ class DocumentItem(Base):
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     quantity = Column(Numeric(10, 3), nullable=False)
+    putaway_to_location_id = Column(Integer, ForeignKey("locations.id"), nullable=True)
 
     document = relationship("Document", back_populates="items")
     product = relationship("Product")
+    putaway_to_location = relationship("Location", foreign_keys=[putaway_to_location_id])
 
 
 class Task(Base):

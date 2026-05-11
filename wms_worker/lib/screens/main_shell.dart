@@ -15,10 +15,12 @@ class MainShell extends StatefulWidget {
     super.key,
     required this.accessToken,
     required this.userName,
+    required this.userId,
   });
 
   final String accessToken;
   final String userName;
+  final int userId;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -36,13 +38,13 @@ class _MainShellState extends State<MainShell> {
     _api = WmsApi(widget.accessToken);
     _syncBus = SyncBus();
     _tabs = List<Widget?>.filled(5, null);
-    _tabs[0] = TasksTab(api: _api, syncBus: _syncBus);
+    _tabs[0] = TasksTab(api: _api, syncBus: _syncBus, currentUserId: widget.userId);
   }
 
   Widget _buildTab(int index) {
     switch (index) {
       case 0:
-        return TasksTab(api: _api, syncBus: _syncBus);
+        return TasksTab(api: _api, syncBus: _syncBus, currentUserId: widget.userId);
       case 1:
         return PzTab(api: _api, syncBus: _syncBus);
       case 2:

@@ -51,3 +51,9 @@ wms_worker/android/captures/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Office — pliki blokady edycji (nie commitować)
+~$*
+
+# Xcode — ustawienia użytkownika
+**/xcuserdata/

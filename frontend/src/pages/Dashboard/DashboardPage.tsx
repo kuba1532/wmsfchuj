@@ -76,7 +76,7 @@ const DashboardPage = () => {
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
-        Dashboard
+        Pulpit
       </Typography>
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>

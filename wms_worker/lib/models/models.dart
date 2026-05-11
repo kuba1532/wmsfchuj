@@ -1,3 +1,18 @@
+int _jsonInt(dynamic v) {
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.parse('$v');
+}
+
+int? _jsonIntOpt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse('$v');
+}
+
+String _jsonStr(dynamic v) => v == null ? '' : '$v';
+
 class UserInfo {
   UserInfo({
     required this.id,
@@ -14,11 +29,11 @@ class UserInfo {
   final String role;
 
   factory UserInfo.fromJson(Map<String, dynamic> j) => UserInfo(
-        id: j['id'] as int,
-        loginCode: j['login_code'] as String,
-        firstName: j['first_name'] as String,
-        lastName: j['last_name'] as String,
-        role: j['role'] as String,
+        id: _jsonInt(j['id']),
+        loginCode: _jsonStr(j['login_code']),
+        firstName: _jsonStr(j['first_name']),
+        lastName: _jsonStr(j['last_name']),
+        role: _jsonStr(j['role']),
       );
 }
 
@@ -28,28 +43,51 @@ class TaskItem {
     required this.type,
     required this.status,
     this.productId,
+    this.productName,
+    this.productSku,
     this.quantity,
     this.fromLocationId,
     this.toLocationId,
+    this.assignedToId,
+    this.assignedToName,
   });
 
   final int id;
   final String type;
   final String status;
   final int? productId;
+  final String? productName;
+  final String? productSku;
   final String? quantity;
   final int? fromLocationId;
   final int? toLocationId;
+  final int? assignedToId;
+  final String? assignedToName;
 
-  factory TaskItem.fromJson(Map<String, dynamic> j) => TaskItem(
-        id: j['id'] as int,
-        type: j['type'] as String,
-        status: j['status'] as String,
-        productId: j['product_id'] as int?,
-        quantity: _decStr(j['quantity']),
-        fromLocationId: j['from_location_id'] as int?,
-        toLocationId: j['to_location_id'] as int?,
-      );
+  factory TaskItem.fromJson(Map<String, dynamic> j) {
+    String? productName;
+    String? productSku;
+    final p = j['product'];
+    if (p is Map<String, dynamic>) {
+      productName = p['name'] as String?;
+      productSku = p['sku'] as String?;
+    }
+    return TaskItem(
+        id: _jsonInt(j['id']),
+      type: j['type'] as String,
+      status: j['status'] as String,
+      productId: _jsonIntOpt(j['product_id']),
+      productName: productName,
+      productSku: productSku,
+      quantity: _decStr(j['quantity']),
+      fromLocationId: _jsonIntOpt(j['from_location_id']),
+      toLocationId: _jsonIntOpt(j['to_location_id']),
+      assignedToId: _jsonIntOpt(j['assigned_to_id']),
+      assignedToName: (j['assigned_to_name'] as String?)?.trim().isEmpty == true
+          ? null
+          : (j['assigned_to_name'] as String?),
+    );
+  }
 }
 
 String? _decStr(dynamic v) {
@@ -66,7 +104,22 @@ class Supplier {
   final String name;
 
   factory Supplier.fromJson(Map<String, dynamic> j) => Supplier(
-        id: j['id'] as int,
+        id: _jsonInt(j['id']),
+        code: j['code'] as String,
+        name: j['name'] as String,
+      );
+}
+
+/// Odbiorca RW (słownik `/recipients`) — spójnie z panelem webowym.
+class RecipientItem {
+  RecipientItem({required this.id, required this.code, required this.name});
+
+  final int id;
+  final String code;
+  final String name;
+
+  factory RecipientItem.fromJson(Map<String, dynamic> j) => RecipientItem(
+        id: _jsonInt(j['id']),
         code: j['code'] as String,
         name: j['name'] as String,
       );
@@ -88,11 +141,25 @@ class Product {
   final String unit;
 
   factory Product.fromJson(Map<String, dynamic> j) => Product(
-        id: j['id'] as int,
+        id: _jsonInt(j['id']),
         sku: j['sku'] as String,
         ean: j['ean'] as String?,
         name: j['name'] as String,
         unit: j['unit'] as String? ?? 'szt',
+      );
+}
+
+class DocumentLinkedTask {
+  DocumentLinkedTask({required this.id, required this.type, required this.status});
+
+  final int id;
+  final String type;
+  final String status;
+
+  factory DocumentLinkedTask.fromJson(Map<String, dynamic> j) => DocumentLinkedTask(
+        id: _jsonInt(j['id']),
+        type: j['type'] as String,
+        status: j['status'] as String,
       );
 }
 
@@ -104,6 +171,7 @@ class DocumentHeader {
     required this.status,
     this.supplier,
     this.recipient,
+    this.relatedTasks = const [],
   });
 
   final int id;
@@ -112,14 +180,19 @@ class DocumentHeader {
   final String status;
   final String? supplier;
   final String? recipient;
+  final List<DocumentLinkedTask> relatedTasks;
 
   factory DocumentHeader.fromJson(Map<String, dynamic> j) => DocumentHeader(
-        id: j['id'] as int,
+        id: _jsonInt(j['id']),
         number: j['number'] as String,
         type: j['type'] as String,
         status: j['status'] as String,
         supplier: j['supplier'] as String?,
         recipient: j['recipient'] as String?,
+        relatedTasks: (j['related_tasks'] as List<dynamic>?)
+                ?.map((e) => DocumentLinkedTask.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
       );
 }
 
@@ -131,7 +204,7 @@ class LocationItem {
   final String type;
 
   factory LocationItem.fromJson(Map<String, dynamic> j) => LocationItem(
-        id: j['id'] as int,
+        id: _jsonInt(j['id']),
         code: j['code'] as String,
         type: j['type'] as String,
       );
@@ -166,9 +239,9 @@ class StockRow {
     final l = j['location'];
     if (l is Map<String, dynamic>) lc = l['code'] as String?;
     return StockRow(
-      id: j['id'] as int,
-      productId: j['product_id'] as int? ?? 0,
-      locationId: j['location_id'] as int? ?? 0,
+      id: _jsonInt(j['id']),
+      productId: _jsonIntOpt(j['product_id']) ?? 0,
+      locationId: _jsonIntOpt(j['location_id']) ?? 0,
       quantity: _decStr(j['quantity']) ?? '0',
       status: j['status'] as String? ?? 'AVAILABLE',
       version: j['version'] as int? ?? 1,

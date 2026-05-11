@@ -15,6 +15,7 @@ from app.models.models import (
     Task,
     Product,
     Location,
+    Recipient,
     Supplier,
     SupplierProduct,
     DocumentTypeEnum,
@@ -27,7 +28,7 @@ from app.models.models import (
 )
 from app.schemas.schemas import (
     DocumentCreatePZ, DocumentCreateMM, DocumentCreateRW,
-    DocumentResponse, DocumentItemResponse, ProductResponse, PaginatedResponse,
+    DocumentResponse, DocumentItemResponse, DocumentLinkedTaskBrief, ProductResponse, PaginatedResponse,
 )
 from app.services.audit import log_action
 from app.services.numbering import generate_document_number
@@ -35,8 +36,43 @@ from app.services.numbering import generate_document_number
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
-def _serialize_document(doc: Document) -> DocumentResponse:
+def _tasks_for_document_id(db: Session, document_id: int) -> list[Task]:
+    return (
+        db.query(Task)
+        .filter(Task.document_id == document_id)
+        .order_by(Task.id)
+        .all()
+    )
+
+
+def _tasks_grouped_by_document_ids(db: Session, doc_ids: list[int]) -> dict[int, list[Task]]:
+    if not doc_ids:
+        return {}
+    rows = (
+        db.query(Task)
+        .filter(Task.document_id.in_(doc_ids))
+        .order_by(Task.document_id, Task.id)
+        .all()
+    )
+    out: dict[int, list[Task]] = {}
+    for t in rows:
+        if t.document_id is None:
+            continue
+        out.setdefault(t.document_id, []).append(t)
+    return out
+
+
+def _serialize_document(doc: Document, related: list[Task] | None = None) -> DocumentResponse:
     """Zwraca pełny DocumentResponse z pozycjami, kodami lokalizacji i produktami."""
+    related = related or []
+    tasks_out = [
+        DocumentLinkedTaskBrief(
+            id=t.id,
+            type=t.type.value if hasattr(t.type, "value") else str(t.type),
+            status=t.status.value if hasattr(t.status, "value") else str(t.status),
+        )
+        for t in related
+    ]
     items_out: list[DocumentItemResponse] = []
     for it in (doc.items or []):
         product = ProductResponse.model_validate(it.product) if it.product else None
@@ -45,6 +81,10 @@ def _serialize_document(doc: Document) -> DocumentResponse:
                 id=it.id,
                 product_id=it.product_id,
                 quantity=it.quantity,
+                putaway_to_location_id=it.putaway_to_location_id,
+                putaway_to_location_code=(
+                    it.putaway_to_location.code if it.putaway_to_location else None
+                ),
                 product=product,
             )
         )
@@ -63,6 +103,7 @@ def _serialize_document(doc: Document) -> DocumentResponse:
         created_by_id=doc.created_by_id,
         created_at=doc.created_at,
         items=items_out,
+        related_tasks=tasks_out,
     )
 
 
@@ -70,16 +111,30 @@ def _serialize_document(doc: Document) -> DocumentResponse:
 # HELPERS
 # ─────────────────────────────
 
-def _get_or_create_stock(db: Session, product_id: int, location_id: int) -> Stock:
-    """Pobiera lub tworzy rekord stanu z blokada FOR UPDATE."""
+def _get_or_create_stock(
+    db: Session,
+    product_id: int,
+    location_id: int,
+    stock_status: StockStatusEnum = StockStatusEnum.AVAILABLE,
+) -> Stock:
+    """Pobiera lub tworzy rekord stanu (dla wskazanego statusu) z blokadą FOR UPDATE."""
     stock = (
         db.query(Stock)
-        .filter(Stock.product_id == product_id, Stock.location_id == location_id)
+        .filter(
+            Stock.product_id == product_id,
+            Stock.location_id == location_id,
+            Stock.status == stock_status,
+        )
         .with_for_update()
         .first()
     )
     if not stock:
-        stock = Stock(product_id=product_id, location_id=location_id, quantity=Decimal("0"))
+        stock = Stock(
+            product_id=product_id,
+            location_id=location_id,
+            quantity=Decimal("0"),
+            status=stock_status,
+        )
         db.add(stock)
         db.flush()
     return stock
@@ -108,7 +163,7 @@ def _record_movement(
     )
 
 
-def _confirm_pz(doc: Document, db: Session, user_id: int) -> None:
+def _receipt_buffer_location(db: Session) -> Location:
     buffer = (
         db.query(Location)
         .filter(
@@ -122,9 +177,35 @@ def _confirm_pz(doc: Document, db: Session, user_id: int) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Brak zdefiniowanej strefy przyjec (BUFFER).",
         )
+    return buffer
 
+
+def _ensure_not_buffer_source(db: Session, location_id: int, *, doc_type: str) -> Location:
+    """MM/RW nie powinny pobierać towaru ze strefy przyjęć (BUFFER)."""
+    loc = (
+        db.query(Location)
+        .filter(Location.id == location_id, Location.is_active.is_(True))
+        .first()
+    )
+    if not loc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lokalizacja zrodlowa nie istnieje lub jest nieaktywna.",
+        )
+    if loc.type == LocationTypeEnum.BUFFER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"{doc_type}: nie wolno pobierac ze strefy przyjec (BUFFER). "
+                "Najpierw wykonaj odlozenie PZ na lokalizacje skladowa/picking."
+            ),
+        )
+    return loc
+
+
+def _confirm_pz(doc: Document, db: Session, user_id: int, target_location: Location) -> None:
     for item in doc.items:
-        stock = _get_or_create_stock(db, item.product_id, buffer.id)
+        stock = _get_or_create_stock(db, item.product_id, target_location.id)
         stock.quantity += item.quantity
         _record_movement(
             db,
@@ -133,7 +214,7 @@ def _confirm_pz(doc: Document, db: Session, user_id: int) -> None:
             item.quantity,
             user_id,
             doc.number,
-            to_location_id=buffer.id,
+            to_location_id=target_location.id,
         )
 
 
@@ -195,27 +276,29 @@ def _confirm_mm(doc: Document, db: Session, user_id: int) -> None:
 
 
 def _confirm_rw(doc: Document, db: Session, user_id: int) -> None:
-    picking_zone = (
-        db.query(Location)
-        .filter(
-            Location.type == LocationTypeEnum.PICKING_ZONE,
-            Location.is_active.is_(True),
-        )
-        .first()
-    )
-    if not picking_zone:
+    if not doc.from_location_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Brak zdefiniowanej strefy kompletacji (PICKING_ZONE).",
+            detail="Dokument RW musi miec wskazana lokalizacje zrodlowa (skad pobieramy towar).",
+        )
+    src_loc = (
+        db.query(Location)
+        .filter(Location.id == doc.from_location_id, Location.is_active.is_(True))
+        .first()
+    )
+    if not src_loc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lokalizacja zrodlowa RW nie istnieje lub jest nieaktywna.",
         )
 
-    # Validate + deduct w jednej petli z FOR UPDATE
+    # Validate + deduct w jednej petli z FOR UPDATE (z wybranej lokalizacji)
     for item in doc.items:
         stock = (
             db.query(Stock)
             .filter(
                 Stock.product_id == item.product_id,
-                Stock.location_id == picking_zone.id,
+                Stock.location_id == src_loc.id,
                 Stock.status == StockStatusEnum.AVAILABLE,
             )
             .with_for_update()
@@ -224,7 +307,10 @@ def _confirm_rw(doc: Document, db: Session, user_id: int) -> None:
         if not stock or stock.quantity < item.quantity:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Niewystarczajacy stan do RW dla produktu ID {item.product_id} w strefie kompletacji.",
+                detail=(
+                    f"Niewystarczajacy stan do RW dla produktu ID {item.product_id} "
+                    f"w lokalizacji {src_loc.code}."
+                ),
             )
 
         stock.quantity -= item.quantity
@@ -235,7 +321,7 @@ def _confirm_rw(doc: Document, db: Session, user_id: int) -> None:
             item.quantity,
             user_id,
             doc.number,
-            from_location_id=picking_zone.id,
+            from_location_id=src_loc.id,
             to_location_id=None,
         )
 
@@ -253,18 +339,24 @@ _TASK_TYPE_MAP = {
 }
 
 
-def _pz_putaway_tasks(doc: Document, db: Session, user_id: int) -> int:
+def _pz_putaway_tasks(doc: Document, db: Session, user_id: int, buffer: Location) -> int:
     n = 0
     for item in doc.items:
+        if item.putaway_to_location_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kazda pozycja PZ musi miec wskazana lokalizacje odlozenia.",
+            )
         db.add(
             Task(
                 type=TaskTypeEnum.PUTAWAY,
-                status=TaskStatusEnum.ASSIGNED,
+                # Gielda zadan: nowo-utworzone zadania trafiaja do puli (bez przypisania).
+                status=TaskStatusEnum.NEW,
                 product_id=item.product_id,
-                from_location_id=doc.from_location_id,
-                to_location_id=doc.to_location_id,
+                from_location_id=buffer.id,
+                to_location_id=item.putaway_to_location_id,
                 quantity=item.quantity,
-                assigned_to_id=user_id,
+                assigned_to_id=None,
                 document_id=doc.id,
                 created_by_id=user_id,
             )
@@ -286,12 +378,13 @@ def _create_tasks_for_document(doc: Document, db: Session, user_id: int) -> int:
         db.add(
             Task(
                 type=task_type,
-                status=TaskStatusEnum.ASSIGNED,
+                # Gielda zadan: zadania MOVE/PICKING powstaja jako NEW i sa pobierane przez workerow.
+                status=TaskStatusEnum.NEW,
                 product_id=item.product_id,
                 from_location_id=doc.from_location_id,
                 to_location_id=doc.to_location_id,
                 quantity=item.quantity,
-                assigned_to_id=user_id,
+                assigned_to_id=None,
                 document_id=doc.id,
                 created_by_id=user_id,
             )
@@ -337,6 +430,7 @@ def list_documents(
         db.query(Document)
         .options(
             joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location),
             joinedload(Document.from_location),
             joinedload(Document.to_location),
         )
@@ -351,9 +445,11 @@ def list_documents(
         data_query = data_query.filter(func.lower(Document.number).like(s))
 
     docs = data_query.offset((page - 1) * page_size).limit(page_size).all()
+    doc_ids = [d.id for d in docs]
+    task_map = _tasks_grouped_by_document_ids(db, doc_ids)
 
     return PaginatedResponse[DocumentResponse](
-        items=[_serialize_document(d) for d in docs],
+        items=[_serialize_document(d, task_map.get(d.id, [])) for d in docs],
         total=total,
         page=page,
         page_size=page_size,
@@ -369,7 +465,8 @@ def get_document(
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
@@ -378,7 +475,7 @@ def get_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dokument nie znaleziony.",
         )
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/pz", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -410,6 +507,22 @@ def create_pz(
             detail="Dostawca nie ma przypisanych produktow — uzupelnij katalog powiazan.",
         )
 
+    target_location = (
+        db.query(Location)
+        .filter(Location.id == data.to_location_id, Location.is_active.is_(True))
+        .first()
+    )
+    if not target_location:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lokalizacja docelowa przyjecia nie istnieje lub jest nieaktywna.",
+        )
+    if target_location.type == LocationTypeEnum.BUFFER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PZ: wybierz lokalizacje magazynowa/picking jako miejsce przyjecia (nie BUFFER).",
+        )
+
     for item in data.items:
         if item.product_id not in allowed_ids:
             raise HTTPException(
@@ -421,7 +534,6 @@ def create_pz(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Produkt ID {item.product_id} nie istnieje lub jest nieaktywny.",
             )
-
     number = generate_document_number(db, DocumentTypeEnum.PZ)
     doc = Document(
         number=number,
@@ -429,22 +541,35 @@ def create_pz(
         status=DocumentStatusEnum.DRAFT,
         supplier_id=data.supplier_id,
         supplier=sup.name,
+        to_location_id=data.to_location_id,
         created_by_id=current_user.id,
     )
     db.add(doc)
     db.flush()
 
     for item in data.items:
-        db.add(DocumentItem(document_id=doc.id, product_id=item.product_id, quantity=item.quantity))
+        db.add(
+            DocumentItem(
+                document_id=doc.id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+            )
+        )
 
     log_action(
         db, "CREATE", "Document", doc.id,
-        details={"type": "PZ", "number": number, "supplier_id": data.supplier_id, "supplier": sup.name},
+        details={
+            "type": "PZ",
+            "number": number,
+            "supplier_id": data.supplier_id,
+            "supplier": sup.name,
+            "to_location_id": data.to_location_id,
+        },
         user_id=current_user.id,
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/{document_id}/pz/start", response_model=DocumentResponse)
@@ -455,7 +580,8 @@ def pz_start_receipt(
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id, Document.type == DocumentTypeEnum.PZ)
         .first()
     )
@@ -475,7 +601,7 @@ def pz_start_receipt(
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/{document_id}/pz/complete", response_model=DocumentResponse)
@@ -486,30 +612,45 @@ def pz_complete_receipt(
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id, Document.type == DocumentTypeEnum.PZ)
         .first()
     )
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Przyjecie PZ nie znalezione.")
-    if doc.status != DocumentStatusEnum.IN_PROGRESS:
+    if doc.status not in (DocumentStatusEnum.DRAFT, DocumentStatusEnum.IN_PROGRESS):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Zakonczyc mozna tylko przyjecie w trakcie (IN_PROGRESS).",
+            detail="Zakonczyc mozna tylko przyjecie w statusie Nowy lub W trakcie.",
         )
 
-    _confirm_pz(doc, db, current_user.id)
-    tasks_n = _pz_putaway_tasks(doc, db, current_user.id)
+    if not doc.to_location_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PZ nie ma ustawionej lokalizacji docelowej przyjecia.",
+        )
+    target_location = (
+        db.query(Location)
+        .filter(Location.id == doc.to_location_id, Location.is_active.is_(True))
+        .first()
+    )
+    if not target_location:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Lokalizacja docelowa przyjecia nie istnieje lub jest nieaktywna.",
+        )
+    _confirm_pz(doc, db, current_user.id, target_location)
     doc.status = DocumentStatusEnum.COMPLETED
 
     log_action(
-        db, "PZ_COMPLETE", "Document", doc.id,
-        details={"number": doc.number, "putaway_tasks": tasks_n},
+        db, "PZ_REGISTER", "Document", doc.id,
+        details={"number": doc.number, "target_location": target_location.code},
         user_id=current_user.id,
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/mm", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -518,12 +659,12 @@ def create_mm(
     current_user: User = require_permission("documents", "OPERATIONAL"),
     db: Session = Depends(get_db),
 ):
-    for loc_id in (data.from_location_id, data.to_location_id):
-        if not db.query(Location).filter(Location.id == loc_id, Location.is_active.is_(True)).first():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Lokalizacja ID {loc_id} nie istnieje lub jest nieaktywna.",
-            )
+    _ensure_not_buffer_source(db, data.from_location_id, doc_type="MM")
+    if not db.query(Location).filter(Location.id == data.to_location_id, Location.is_active.is_(True)).first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Lokalizacja ID {data.to_location_id} nie istnieje lub jest nieaktywna.",
+        )
 
     number = generate_document_number(db, DocumentTypeEnum.MM)
     doc = Document(
@@ -546,7 +687,7 @@ def create_mm(
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/rw", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -555,6 +696,24 @@ def create_rw(
     current_user: User = require_permission("documents", "OPERATIONAL"),
     db: Session = Depends(get_db),
 ):
+    src_loc = _ensure_not_buffer_source(db, data.from_location_id, doc_type="RW")
+
+    recipient_label: str
+    if data.recipient_id is not None:
+        rec = (
+            db.query(Recipient)
+            .filter(Recipient.id == data.recipient_id, Recipient.is_active.is_(True))
+            .first()
+        )
+        if not rec:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Odbiorca (recipient_id) nie istnieje lub jest nieaktywny.",
+            )
+        recipient_label = f"{rec.code} — {rec.name}"
+    else:
+        recipient_label = (data.recipient or "").strip()
+
     for item in data.items:
         if not db.query(Product).filter(Product.id == item.product_id, Product.is_active.is_(True)).first():
             raise HTTPException(
@@ -566,7 +725,8 @@ def create_rw(
     doc = Document(
         number=number,
         type=DocumentTypeEnum.RW,
-        recipient=data.recipient,
+        from_location_id=data.from_location_id,
+        recipient=recipient_label,
         created_by_id=current_user.id,
     )
     db.add(doc)
@@ -577,23 +737,24 @@ def create_rw(
 
     log_action(
         db, "CREATE", "Document", doc.id,
-        details={"type": "RW", "number": number, "recipient": data.recipient},
+        details={"type": "RW", "number": number, "recipient": recipient_label, "from_location_id": data.from_location_id},
         user_id=current_user.id,
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/{document_id}/confirm", response_model=DocumentResponse)
 def confirm_document(
     document_id: int,
-    current_user: User = require_permission("documents", "FULL"),
+    current_user: User = require_permission("documents", "OPERATIONAL"),
     db: Session = Depends(get_db),
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
@@ -639,7 +800,7 @@ def confirm_document(
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))
 
 
 @router.post("/{document_id}/generate-tasks")
@@ -650,7 +811,8 @@ def generate_tasks(
 ):
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
@@ -689,7 +851,8 @@ def submit_document_to_tasks(
     """
     doc = (
         db.query(Document)
-        .options(joinedload(Document.items).joinedload(DocumentItem.product), joinedload(Document.from_location), joinedload(Document.to_location))
+        .options(joinedload(Document.items).joinedload(DocumentItem.product),
+            joinedload(Document.items).joinedload(DocumentItem.putaway_to_location), joinedload(Document.from_location), joinedload(Document.to_location))
         .filter(Document.id == document_id)
         .first()
     )
@@ -723,4 +886,4 @@ def submit_document_to_tasks(
     )
     db.commit()
     db.refresh(doc)
-    return _serialize_document(doc)
+    return _serialize_document(doc, _tasks_for_document_id(db, doc.id))

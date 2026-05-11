@@ -40,7 +40,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
+  { label: 'Pulpit', path: '/dashboard', icon: <Dashboard /> },
 
   // Słowniki
   { label: 'Produkty', path: '/products', icon: <Inventory2 />, area: 'dictionaries' },
@@ -56,7 +56,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Wydania (RW)', path: '/documents/rw', icon: <CallMade />, area: 'documents' },
 
   // Operacje
-  { label: 'Rozmieszczanie', path: '/putaway', icon: <MoveDown />, area: 'movements' },
+  { label: 'Odłożenie (PZ)', path: '/putaway', icon: <MoveDown />, area: 'movements' },
   { label: 'Kompletacja', path: '/picking', icon: <PlaylistAddCheck />, area: 'movements' },
   { label: 'Inwentaryzacja', path: '/inventory', icon: <Assignment />, area: 'inventory' },
 
@@ -125,7 +125,7 @@ const Sidebar = () => {
           letterSpacing: 1,
         }}
       >
-        WMS System
+        System WMS
       </Toolbar>
       <Divider sx={{ borderColor: '#334155' }} />
       <Box sx={{ overflow: 'auto' }}>

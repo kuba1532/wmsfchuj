@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import '../models/models.dart';
+import '../util/document_labels.dart';
+import '../util/task_playbook.dart';
 import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import '../widgets/code_entry_dialog.dart';
@@ -194,7 +196,7 @@ class _MmTabState extends State<MmTab> {
         items: items,
       );
       if (_autoToTasks) {
-        await widget.api.submitToTasks(doc.id);
+        await widget.api.confirmDocument(doc.id);
       }
       if (!mounted) return;
       setState(() => _lines.clear());
@@ -205,7 +207,7 @@ class _MmTabState extends State<MmTab> {
         SnackBar(
           content: Text(
             _autoToTasks
-                ? 'MM ${doc.number} przekazane do zadań (status: W TRAKCIE).'
+                ? 'MM ${doc.number} — zatwierdzono, zadania uruchomione (jak na webie).'
                 : 'Utworzono MM: ${doc.number} (szkic).',
           ),
         ),
@@ -232,8 +234,8 @@ class _MmTabState extends State<MmTab> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Od razu przekaż do zadań'),
-            subtitle: const Text('Rekomendowane: dokument od razu trafia do realizacji'),
+            title: const Text('Od razu zatwierdź'),
+            subtitle: const Text('Ten sam krok co „Zatwierdź” na panelu webowym (MM → zadania).'),
             value: _autoToTasks,
             onChanged: _saving ? null : (v) => setState(() => _autoToTasks = v),
           ),
@@ -294,16 +296,18 @@ class _MmTabState extends State<MmTab> {
               (d) => ListTile(
                 leading: const Icon(Icons.swap_horiz),
                 title: Text(d.number),
-                subtitle: Text(d.status),
+                subtitle: Text(
+                  '${documentStatusLabelPl(d.status)}\n${d.relatedTasksLine}',
+                ),
                 trailing: d.status == 'DRAFT'
                     ? TextButton(
                         onPressed: () async {
                           try {
-                            await widget.api.submitToTasks(d.id);
+                            await widget.api.confirmDocument(d.id);
                             await _loadDocs();
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('MM ${d.number} przekazane do zadań')),
+                              SnackBar(content: Text('MM ${d.number} — zatwierdzono (zadania jak na webie)')),
                             );
                           } on ApiException catch (e) {
                             if (mounted) {
@@ -313,7 +317,7 @@ class _MmTabState extends State<MmTab> {
                             }
                           }
                         },
-                        child: const Text('Do zadań'),
+                        child: const Text('Zatwierdź'),
                       )
                     : null,
               ),

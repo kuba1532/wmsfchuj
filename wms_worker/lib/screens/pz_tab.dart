@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../util/document_labels.dart';
+import '../util/task_playbook.dart';
 import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import '../widgets/product_picker_dialog.dart';
@@ -18,7 +20,9 @@ class PzTab extends StatefulWidget {
 class _PzTabState extends State<PzTab> {
   final List<PzLineDraft> _lines = [];
   List<Supplier> _suppliers = [];
+  List<LocationItem> _locations = [];
   int? _supplierId;
+  int? _targetLocationId;
   List<DocumentHeader>? _recent;
   bool _loadingList = true;
   bool _loadingSuppliers = true;
@@ -30,6 +34,7 @@ class _PzTabState extends State<PzTab> {
     super.initState();
     _loadDocs();
     _loadSuppliers();
+    _loadLocations();
   }
 
   Future<void> _loadSuppliers() async {
@@ -45,6 +50,23 @@ class _PzTabState extends State<PzTab> {
       }
     } finally {
       if (mounted) setState(() => _loadingSuppliers = false);
+    }
+  }
+
+  Future<void> _loadLocations() async {
+    try {
+      final locs = await widget.api.fetchLocations();
+      if (!mounted) return;
+      setState(() {
+        _locations = locs.where((l) => l.type != 'BUFFER').toList()
+          ..sort((a, b) => a.code.compareTo(b.code));
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nie udało się pobrać lokalizacji magazynowych.')),
+        );
+      }
     }
   }
 
@@ -127,6 +149,12 @@ class _PzTabState extends State<PzTab> {
       );
       return;
     }
+    if (_targetLocationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wybierz lokalizację przyjęcia')),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       final items = _lines
@@ -137,7 +165,11 @@ class _PzTabState extends State<PzTab> {
             },
           )
           .toList();
-      final doc = await widget.api.createPz(supplierId: _supplierId!, items: items);
+      final doc = await widget.api.createPz(
+        supplierId: _supplierId!,
+        toLocationId: _targetLocationId!,
+        items: items,
+      );
       if (!mounted) return;
       setState(() {
         _lines.clear();
@@ -157,23 +189,6 @@ class _PzTabState extends State<PzTab> {
     }
   }
 
-  Future<void> _pzStart(DocumentHeader d) async {
-    try {
-      await widget.api.pzStart(d.id);
-      await _loadDocs();
-      widget.syncBus.publish();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Rozpoczęto przyjęcie ${d.number}')),
-        );
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    }
-  }
-
   Future<void> _pzComplete(DocumentHeader d) async {
     try {
       await widget.api.pzComplete(d.id);
@@ -181,28 +196,13 @@ class _PzTabState extends State<PzTab> {
       widget.syncBus.publish();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Zakończono ${d.number} — dodano zadania odłożenia')),
+          SnackBar(content: Text('Zarejestrowano ${d.number} — stan zwiększony na wskazanej lokalizacji')),
         );
       }
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       }
-    }
-  }
-
-  String _statusPl(String s) {
-    switch (s) {
-      case 'DRAFT':
-        return 'Nowy';
-      case 'IN_PROGRESS':
-        return 'W trakcie';
-      case 'COMPLETED':
-        return 'Zakończony';
-      case 'CONFIRMED':
-        return 'Zatwierdzony';
-      default:
-        return s;
     }
   }
 
@@ -212,6 +212,7 @@ class _PzTabState extends State<PzTab> {
       onRefresh: () async {
         await _loadDocs();
         await _loadSuppliers();
+        await _loadLocations();
       },
       child: ListView(
         padding: const EdgeInsets.all(16),
@@ -219,7 +220,7 @@ class _PzTabState extends State<PzTab> {
           Text('Nowe przyjęcie PZ', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            'Wybierz dostawcę — wyszukiwanie towaru dotyczy tylko produktów przypisanych do niego w systemie. '
+            'Wybierz dostawcę i lokalizację przyjęcia — po rejestracji PZ stan zwiększa się bezpośrednio na tej lokalizacji. '
             'Przykład demo: dostawca z seeda i SKU „DEMO-001”, „DEMO-002”.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -249,6 +250,26 @@ class _PzTabState extends State<PzTab> {
               }),
             ),
           const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            decoration: const InputDecoration(
+              labelText: 'Lokalizacja przyjęcia',
+              border: OutlineInputBorder(),
+            ),
+            isExpanded: true,
+            // ignore: deprecated_member_use
+            value: _targetLocationId,
+            hint: const Text('Wybierz lokalizację magazynową'),
+            items: _locations
+                .map(
+                  (loc) => DropdownMenuItem(
+                    value: loc.id,
+                    child: Text('${loc.code} — ${loc.type}', overflow: TextOverflow.ellipsis),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) => setState(() => _targetLocationId = v),
+          ),
+          const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.tonalIcon(
@@ -261,7 +282,9 @@ class _PzTabState extends State<PzTab> {
           ..._lines.map(
             (l) => ListTile(
               title: Text(l.product.name),
-              subtitle: Text('${l.product.sku} · ${l.quantity} ${l.product.unit}'),
+              subtitle: Text(
+                '${l.product.sku} · ${l.quantity} ${l.product.unit}',
+              ),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () => setState(() => _lines.remove(l)),
@@ -293,19 +316,16 @@ class _PzTabState extends State<PzTab> {
               (d) => ListTile(
                 leading: const Icon(Icons.description_outlined),
                 title: Text(d.number),
-                subtitle: Text('${_statusPl(d.status)} · ${d.supplier ?? "—"}'),
+                subtitle: Text(
+                  '${documentStatusLabelPl(d.status)} · ${d.supplier ?? "—"}\n${d.relatedTasksLine}',
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (d.status == 'DRAFT')
-                      TextButton(
-                        onPressed: () => _pzStart(d),
-                        child: const Text('Start'),
-                      ),
-                    if (d.status == 'IN_PROGRESS')
                       FilledButton(
                         onPressed: () => _pzComplete(d),
-                        child: const Text('Koniec'),
+                        child: const Text('Zarejestruj'),
                       ),
                   ],
                 ),

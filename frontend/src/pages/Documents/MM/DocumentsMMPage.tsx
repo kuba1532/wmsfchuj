@@ -26,6 +26,7 @@ import {
 } from '@/constants/documentStatuses';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 import { documentMMSchema, type DocumentMMFormData } from '@/utils/validators';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
@@ -33,6 +34,10 @@ import PageHeader from '@/components/Table/PageHeader';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
 import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
+import {
+  DocumentRelatedTasksCell,
+  DocumentRelatedTasksDetailSection,
+} from '@/components/DocumentRelatedTasks/DocumentRelatedTasks';
 import apiClient from '@/api/client';
 
 interface ProductOption {
@@ -178,7 +183,7 @@ const DocumentsMMPage = () => {
     },
     {
       field: 'status',
-      headerName: 'Status',
+      headerName: 'Stan dokumentu',
       width: 150,
       renderCell: (params) => (
         <Chip
@@ -190,6 +195,18 @@ const DocumentsMMPage = () => {
             fontWeight: 600,
           }}
         />
+      ),
+    },
+    {
+      field: 'related_tasks',
+      headerName: 'Powiązane zadania',
+      description: 'Kolejność 1., 2., … oraz #id — jak w module Zadania.',
+      minWidth: 280,
+      flex: 0.5,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <DocumentRelatedTasksCell tasks={(params.row as DocumentItem).related_tasks} />
       ),
     },
     {
@@ -265,6 +282,7 @@ const DocumentsMMPage = () => {
           pageSizeOptions={[10, 25]}
           initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />
@@ -424,7 +442,7 @@ const DocumentsMMPage = () => {
               ))}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Status
+                  Stan dokumentu
                 </Typography>
                 <Chip
                   label={DOCUMENT_STATUS_LABELS[selectedDoc.status]}
@@ -437,6 +455,8 @@ const DocumentsMMPage = () => {
                 />
               </Box>
 
+              <Divider />
+              <DocumentRelatedTasksDetailSection tasks={selectedDoc.related_tasks} />
               <Divider />
               <Typography variant="subtitle2" fontWeight={600}>
                 Pozycje dokumentu ({selectedDoc.items?.length ?? 0})

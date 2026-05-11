@@ -47,6 +47,7 @@ import useSessionTimeout from '@/hooks/useSessionTimeout';
 import SessionWarning from '@/components/Notifications/SessionWarning';
 import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import type { PermissionArea } from '@/constants/permissions';
+import { roleLabelPl } from '@/constants/roles';
 
 interface NavItem {
   label: string;
@@ -57,7 +58,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
+  { label: 'Pulpit', path: '/dashboard', icon: <Dashboard /> },
   { label: 'Produkty', path: '/products', icon: <Inventory2 />, area: 'dictionaries' },
   { label: 'Lokalizacje', path: '/locations', icon: <LocationOn />, area: 'dictionaries' },
   { label: 'Stany magazynowe', path: '/stock', icon: <Warehouse />, area: 'movements' },
@@ -65,7 +66,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Przyjęcia (PZ)', path: '/documents/pz', icon: <CallReceived />, area: 'documents' },
   { label: 'Przesunięcia (MM)', path: '/documents/mm', icon: <SwapHoriz />, area: 'documents' },
   { label: 'Wydania (RW)', path: '/documents/rw', icon: <CallMade />, area: 'documents' },
-  { label: 'Rozmieszczanie', path: '/putaway', icon: <MoveDown />, area: 'movements' },
+  { label: 'Odłożenie (PZ)', path: '/putaway', icon: <MoveDown />, area: 'movements' },
   { label: 'Kompletacja', path: '/picking', icon: <PlaylistAddCheck />, area: 'movements' },
   { label: 'Inwentaryzacja', path: '/inventory', icon: <Assignment />, area: 'inventory' },
   { label: 'Zadania', path: '/tasks', icon: <Assignment />, area: 'tasks' },
@@ -174,7 +175,7 @@ const MobileLayout = () => {
       >
         <Toolbar sx={{ justifyContent: 'space-between', px: 2, minHeight: 56 }}>
           <Typography variant="h6" fontWeight={700} color="#FFFFFF">
-            WMS System
+            System WMS
           </Typography>
           <IconButton
             onClick={() => setDrawerOpen(false)}
@@ -191,7 +192,7 @@ const MobileLayout = () => {
             {user?.email}
           </Typography>
           <Typography variant="caption" color="#64748B">
-            {user?.role}
+            {roleLabelPl(user?.role)}
           </Typography>
         </Box>
 

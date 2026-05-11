@@ -4,6 +4,7 @@ class SessionStore {
   static const _kAccess = 'wms_access_token';
   static const _kRefresh = 'wms_refresh_token';
   static const _kRecipients = 'wms_recent_recipients';
+  static const _kApiBase = 'wms_api_base';
 
   Future<void> saveTokens({required String access, String? refresh}) async {
     final p = await SharedPreferences.getInstance();
@@ -22,6 +23,18 @@ class SessionStore {
     final p = await SharedPreferences.getInstance();
     await p.remove(_kAccess);
     await p.remove(_kRefresh);
+  }
+
+  /// Zapisany przez użytkownika adres serwera (np. IP Maca dla iPhone).
+  Future<String?> readSavedApiBase() async {
+    final p = await SharedPreferences.getInstance();
+    final v = p.getString(_kApiBase)?.trim();
+    return v == null || v.isEmpty ? null : v;
+  }
+
+  Future<void> saveApiBase(String url) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kApiBase, url.trim());
   }
 
   Future<List<String>> readRecentRecipients() async {

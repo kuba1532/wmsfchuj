@@ -28,6 +28,8 @@ export interface TaskItem {
 
 interface UseTasksOptions {
   statusFilter?: string;
+  /** Jak na mobilce: API pomija COMPLETED/CANCELLED (spójna lista „Aktywne”). */
+  omitTerminal?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -45,8 +47,9 @@ interface UseTasksReturn {
 
 export function useTasks({
   statusFilter = '',
+  omitTerminal = false,
   page = 1,
-  pageSize = 50,
+  pageSize = 100,
 }: UseTasksOptions = {}): UseTasksReturn {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -62,6 +65,7 @@ export function useTasks({
         page_size: String(pageSize),
       });
       if (statusFilter) params.append('status_filter', statusFilter);
+      if (omitTerminal) params.append('omit_terminal', 'true');
 
       const response = await apiClient.get(`/tasks?${params.toString()}`);
       const data = response.data;
@@ -74,18 +78,21 @@ export function useTasks({
     } finally {
       setIsLoading(false);
     }
-  }, [page, pageSize, statusFilter]);
+  }, [page, pageSize, statusFilter, omitTerminal]);
 
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
-  useAutoRefresh(fetchTasks);
+  // Szybsza synchronizacja z mobilką (giełda zadań) — aktualizacja co 10s.
+  useAutoRefresh(fetchTasks, { intervalMs: 10 * 1000 });
 
   const startTask = useCallback(
     async (id: number) => {
       await apiClient.post(`/tasks/${id}/start`);
-      showSuccess('Zadanie rozpoczęte.');
+      showSuccess(
+        'Zadanie w realizacji — przy odłożeniu (PZ) stany zmieniają się dopiero po zakończeniu z potwierdzeniem miejsca.',
+      );
       fetchTasks();
     },
     [fetchTasks],

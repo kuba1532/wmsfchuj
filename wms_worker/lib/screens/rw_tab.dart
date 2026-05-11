@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import '../models/models.dart';
-import '../services/session_store.dart';
+import '../util/document_labels.dart';
+import '../util/task_playbook.dart';
 import '../services/sync_bus.dart';
 import '../services/wms_api.dart';
 import '../widgets/product_picker_dialog.dart';
 
-/// Wydanie RW (rozchód) — scenariusz „pakowanie / wysyłka”: odbiorca + towary ze skanu.
+/// Wydanie RW — lokalizacja pobrania + odbiorca ze słownika + pozycje (jak panel webowy).
 class RwTab extends StatefulWidget {
   const RwTab({super.key, required this.api, required this.syncBus});
 
@@ -19,22 +20,26 @@ class RwTab extends StatefulWidget {
 }
 
 class _RwTabState extends State<RwTab> {
-  final _recipient = TextEditingController();
   final List<PzLineDraft> _lines = [];
   List<DocumentHeader>? _recent;
   bool _loadingList = true;
   bool _saving = false;
   String? _listError;
   bool _autoToTasks = true;
-  List<String> _recentRecipients = [];
-  final _store = SessionStore();
   Timer? _autoRefreshTimer;
+
+  List<LocationItem> _locations = [];
+  List<RecipientItem> _recipients = [];
+  int? _fromLocationId;
+  int? _recipientId;
+  bool _dictLoading = true;
+  String? _dictError;
 
   @override
   void initState() {
     super.initState();
     _loadDocs();
-    _loadRecipients();
+    _loadDicts();
     _autoRefreshTimer = Timer.periodic(const Duration(minutes: 3), (_) {
       if (!mounted || _loadingList || _saving) return;
       _loadDocs();
@@ -44,14 +49,35 @@ class _RwTabState extends State<RwTab> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
-    _recipient.dispose();
     super.dispose();
   }
 
-  Future<void> _loadRecipients() async {
-    final list = await _store.readRecentRecipients();
-    if (!mounted) return;
-    setState(() => _recentRecipients = list);
+  Future<void> _loadDicts() async {
+    setState(() {
+      _dictLoading = true;
+      _dictError = null;
+    });
+    try {
+      final locs = await widget.api.fetchLocations();
+      final recs = await widget.api.fetchRecipients();
+      if (!mounted) return;
+      setState(() {
+        _locations = locs;
+        _recipients = recs;
+        if (_fromLocationId != null && !locs.any((l) => l.id == _fromLocationId)) {
+          _fromLocationId = null;
+        }
+        if (_recipientId != null && !recs.any((r) => r.id == _recipientId)) {
+          _recipientId = null;
+        }
+      });
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _dictError = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _dictError = '$e');
+    } finally {
+      if (mounted) setState(() => _dictLoading = false);
+    }
   }
 
   Future<void> _loadDocs() async {
@@ -109,10 +135,15 @@ class _RwTabState extends State<RwTab> {
   }
 
   Future<void> _submit() async {
-    final r = _recipient.text.trim();
-    if (r.isEmpty) {
+    if (_fromLocationId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Podaj odbiorcę / zamówienie')),
+        const SnackBar(content: Text('Wybierz lokalizację pobrania (skąd zdejmujemy towar).')),
+      );
+      return;
+    }
+    if (_recipientId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wybierz odbiorcę z listy.')),
       );
       return;
     }
@@ -125,17 +156,20 @@ class _RwTabState extends State<RwTab> {
     setState(() => _saving = true);
     try {
       final items = _lines.map((l) => {'product_id': l.product.id, 'quantity': l.quantity}).toList();
-      final doc = await widget.api.createRw(recipient: r, items: items);
+      final doc = await widget.api.createRw(
+        fromLocationId: _fromLocationId!,
+        recipientId: _recipientId!,
+        items: items,
+      );
       if (_autoToTasks) {
-        await widget.api.submitToTasks(doc.id);
+        await widget.api.confirmDocument(doc.id);
       }
       if (!mounted) return;
-      await _store.saveRecentRecipient(r);
       setState(() {
         _lines.clear();
-        _recipient.clear();
+        _fromLocationId = null;
+        _recipientId = null;
       });
-      await _loadRecipients();
       await _loadDocs();
       widget.syncBus.publish();
       if (!mounted) return;
@@ -143,7 +177,7 @@ class _RwTabState extends State<RwTab> {
         SnackBar(
           content: Text(
             _autoToTasks
-                ? 'RW ${doc.number} przekazane do zadań (status: W TRAKCIE).'
+                ? 'RW ${doc.number} — zatwierdzono, zadania uruchomione (jak na webie).'
                 : 'Utworzono RW: ${doc.number} (szkic).',
           ),
         ),
@@ -158,42 +192,87 @@ class _RwTabState extends State<RwTab> {
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: _loadDocs,
+      onRefresh: () async {
+        await Future.wait([_loadDocs(), _loadDicts()]);
+      },
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Text('Wydanie RW (wysyłka)', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
-          const Text('Kroki: 1) Odbiorca  2) Pozycje  3) Utwórz RW.', style: TextStyle(fontSize: 13)),
+          const Text(
+            'Kroki: 1) Lokalizacja pobrania  2) Odbiorca  3) Pozycje  4) Utwórz RW.',
+            style: TextStyle(fontSize: 13),
+          ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Od razu przekaż do zadań'),
-            subtitle: const Text('Rekomendowane na pokaz: jeden klik tworzy RW i zadania'),
+            title: const Text('Od razu zatwierdź'),
+            subtitle: const Text('Ten sam krok co „Zatwierdź” na panelu webowym (RW → zadania).'),
             value: _autoToTasks,
             onChanged: _saving ? null : (v) => setState(() => _autoToTasks = v),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _recipient,
-            decoration: const InputDecoration(
-              labelText: 'Odbiorca / ref. zamówienia',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          if (_recentRecipients.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _recentRecipients
+          if (_dictLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_dictError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _dictError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            )
+          else ...[
+            DropdownButtonFormField<int>(
+              decoration: const InputDecoration(
+                labelText: 'Lokalizacja pobrania',
+                border: OutlineInputBorder(),
+                helperText: 'Musi mieć stan przy zatwierdzaniu RW',
+              ),
+              isExpanded: true,
+              value: _fromLocationId,
+              items: _locations
                   .map(
-                    (r) => ActionChip(
-                      label: Text(r),
-                      onPressed: () => setState(() => _recipient.text = r),
+                    (l) => DropdownMenuItem(
+                      value: l.id,
+                      child: Text('${l.code} (${l.type})', overflow: TextOverflow.ellipsis),
                     ),
                   )
                   .toList(),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _fromLocationId = v),
             ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              decoration: const InputDecoration(
+                labelText: 'Odbiorca',
+                border: OutlineInputBorder(),
+              ),
+              isExpanded: true,
+              value: _recipientId,
+              items: _recipients
+                  .map(
+                    (r) => DropdownMenuItem(
+                      value: r.id,
+                      child: Text('${r.code} — ${r.name}', overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _recipientId = v),
+            ),
+            if (_recipients.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Brak odbiorców w API (migracja 0008 + seed / uprawnienie słowników).',
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error),
+                ),
+              ),
           ],
           const SizedBox(height: 12),
           FilledButton.tonalIcon(
@@ -213,7 +292,7 @@ class _RwTabState extends State<RwTab> {
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: _saving ? null : _submit,
+            onPressed: (_saving || _dictLoading || _dictError != null) ? null : _submit,
             child: _saving
                 ? const SizedBox(
                     width: 22,
@@ -238,26 +317,27 @@ class _RwTabState extends State<RwTab> {
               (d) => ListTile(
                 leading: const Icon(Icons.local_shipping_outlined),
                 title: Text(d.number),
-                subtitle: Text('${d.status} · ${d.recipient ?? "—"}'),
+                subtitle: Text(
+                  '${documentStatusLabelPl(d.status)} · ${d.recipient ?? "—"}\n${d.relatedTasksLine}',
+                ),
                 trailing: d.status == 'DRAFT'
                     ? TextButton(
                         onPressed: () async {
                           try {
-                            await widget.api.submitToTasks(d.id);
+                            await widget.api.confirmDocument(d.id);
                             await _loadDocs();
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('RW ${d.number} przekazane do zadań')),
+                              SnackBar(content: Text('RW ${d.number} — zatwierdzono (zadania jak na webie)')),
                             );
                           } on ApiException catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(e.message)),
-                              );
-                            }
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.message)),
+                            );
                           }
                         },
-                        child: const Text('Do zadań'),
+                        child: const Text('Zatwierdź'),
                       )
                     : null,
               ),

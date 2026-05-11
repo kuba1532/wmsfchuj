@@ -22,6 +22,7 @@ import FormSelect from '@/components/Form/FormSelect';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
 import PageHeader from '@/components/Table/PageHeader';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { useLocations, type LocationItem } from '@/hooks/useLocations';
 
@@ -151,7 +152,7 @@ const LocationsPage = () => {
     { field: 'shelf', headerName: 'Półka', width: 80 },
     {
       field: 'is_active',
-      headerName: 'Status',
+      headerName: 'Aktywność',
       width: 110,
       renderCell: (params) => (
         <Chip
@@ -274,6 +275,7 @@ const LocationsPage = () => {
           pageSizeOptions={[10, 25, 50]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />

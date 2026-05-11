@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def send_account_setup_email(*, to_email: str, login_code: str, setup_url: str) -> None:
+def send_account_setup_email(*, to_email: str, login_code: str, setup_url: str) -> tuple[bool, str | None]:
     subject = "WMS - ustawienie hasla konta"
     body = (
         "Twoje konto w systemie WMS zostalo utworzone.\n\n"
@@ -19,7 +19,7 @@ def send_account_setup_email(*, to_email: str, login_code: str, setup_url: str) 
 
     if not settings.SMTP_ENABLED:
         logger.info("SMTP disabled; setup link for %s: %s", to_email, setup_url)
-        return
+        return False, "SMTP disabled"
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -27,10 +27,16 @@ def send_account_setup_email(*, to_email: str, login_code: str, setup_url: str) 
     message["To"] = to_email
     message.set_content(body)
 
-    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
-        if settings.SMTP_USE_TLS:
-            server.starttls()
-        if settings.SMTP_USERNAME:
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-        server.send_message(message)
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
+            if settings.SMTP_USE_TLS:
+                server.starttls()
+            if settings.SMTP_USERNAME:
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            server.send_message(message)
+        return True, None
+    except Exception as e:
+        # Nie blokujemy tworzenia użytkownika podczas demo/awarii SMTP.
+        logger.exception("SMTP send failed for %s", to_email)
+        return False, str(e)
 

@@ -48,7 +48,7 @@ class ErrorBoundary extends Component<Props, State> {
             color="text.secondary"
             sx={{ textAlign: 'center', maxWidth: 400 }}
           >
-            Coś poszło nie tak przy ładowaniu tej sekcji. Spróbuj odświeżyć lub wróć do dashboardu.
+            Coś poszło nie tak przy ładowaniu tej sekcji. Spróbuj odświeżyć stronę lub wróć do pulpitu.
           </Typography>
           {this.state.error && (
             <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace' }}>
@@ -60,7 +60,7 @@ class ErrorBoundary extends Component<Props, State> {
               Spróbuj ponownie
             </Button>
             <Button variant="contained" onClick={() => (window.location.href = '/dashboard')}>
-              Wróć do dashboardu
+              Wróć do pulpitu
             </Button>
           </Box>
         </Box>

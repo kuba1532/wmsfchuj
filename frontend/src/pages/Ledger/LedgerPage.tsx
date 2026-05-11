@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { MovementType, MOVEMENT_TYPE_LABELS } from '@/constants/movementTypes';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 
 const TYPE_COLORS: Record<string, string> = {
   RECEIPT: '#2E7D32',
@@ -52,7 +53,7 @@ const columns: GridColDef[] = [
     width: 150,
     valueFormatter: (value: string | null) => value ?? '—',
   },
-  { field: 'product_id', headerName: 'Produkt ID', width: 110 },
+  { field: 'product_id', headerName: 'ID produktu', width: 110 },
   { field: 'quantity', headerName: 'Ilość', width: 100, type: 'number' },
   {
     field: 'from_location_id',
@@ -66,7 +67,7 @@ const columns: GridColDef[] = [
     width: 100,
     valueFormatter: (value: number | null) => value ?? '—',
   },
-  { field: 'user_id', headerName: 'User ID', width: 90 },
+  { field: 'user_id', headerName: 'ID użytkownika', width: 120 },
 ];
 
 const LedgerPage = () => {
@@ -146,6 +147,7 @@ const LedgerPage = () => {
             sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
           }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />

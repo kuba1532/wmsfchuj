@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Generic, Optional, TypeVar
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 T = TypeVar("T")
 
@@ -217,6 +217,7 @@ class DocumentItemCreate(BaseModel):
 
 class DocumentCreatePZ(BaseModel):
     supplier_id: int = Field(..., gt=0, description="Dostawca z katalogu — tylko jego produkty")
+    to_location_id: int = Field(..., gt=0, description="Docelowa lokalizacja przyjęcia (magazyn/picking)")
     items: list[DocumentItemCreate] = Field(..., min_length=1)
 
 
@@ -234,17 +235,39 @@ class DocumentCreateMM(BaseModel):
 
 
 class DocumentCreateRW(BaseModel):
-    recipient: str = Field(..., min_length=1, max_length=255)
+    """RW: jawna lokalizacja pobrania + odbiorca z listy (recipient_id) lub legacy pole recipient."""
+
+    from_location_id: int = Field(..., gt=0)
+    recipient_id: Optional[int] = Field(None, gt=0)
+    recipient: Optional[str] = Field(None, min_length=1, max_length=255)
     items: list[DocumentItemCreate] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def require_recipient_source(self) -> "DocumentCreateRW":
+        if self.recipient_id is not None:
+            return self
+        if self.recipient and str(self.recipient).strip():
+            return self
+        raise ValueError("Wybierz odbiorce z listy (recipient_id) lub podaj pole recipient (tekst).")
 
 
 class DocumentItemResponse(BaseModel):
     id: int
     product_id: int
     quantity: Decimal
+    putaway_to_location_id: Optional[int] = None
+    putaway_to_location_code: Optional[str] = None
     product: Optional[ProductResponse] = None
 
     model_config = {"from_attributes": True}
+
+
+class DocumentLinkedTaskBrief(BaseModel):
+    """Powiązane zadanie magazynowe (ten sam dokument_id)."""
+
+    id: int
+    type: str
+    status: str
 
 
 class DocumentResponse(BaseModel):
@@ -262,11 +285,21 @@ class DocumentResponse(BaseModel):
     created_by_id: int
     created_at: datetime
     items: list[DocumentItemResponse] = []
+    related_tasks: list[DocumentLinkedTaskBrief] = []
 
     model_config = {"from_attributes": True}
 
 
 class SupplierResponse(BaseModel):
+    id: int
+    code: str
+    name: str
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class RecipientResponse(BaseModel):
     id: int
     code: str
     name: str
@@ -373,6 +406,11 @@ class AuditLogResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SyncVersionResponse(BaseModel):
+    version: int
+    last_event_at: Optional[datetime] = None
 
 
 # ── PAGINATION ──────────────────────────────────────────────────────────────

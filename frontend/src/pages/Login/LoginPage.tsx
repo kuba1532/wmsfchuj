@@ -28,7 +28,7 @@ const LoginPage = () => {
     setError('');
 
     if (!/^\d{5}$/.test(loginCode)) {
-      setError('Login musi składać się z 5 cyfr.');
+      setError('Kod logowania musi składać się z 5 cyfr.');
       return;
     }
 
@@ -97,7 +97,7 @@ const LoginPage = () => {
             sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
           >
             <TextField
-              label="Login (5-cyfrowy kod)"
+              label="Kod logowania (5 cyfr)"
               value={loginCode}
               onChange={(e) => setLoginCode(e.target.value)}
               placeholder="np. 00001"

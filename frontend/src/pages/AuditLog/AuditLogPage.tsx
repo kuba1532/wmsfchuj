@@ -4,6 +4,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { Search } from '@mui/icons-material';
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 
 const ACTION_COLORS: Record<string, string> = {
   LOGIN: '#1565C0',
@@ -17,6 +18,20 @@ const ACTION_COLORS: Record<string, string> = {
   START: '#0277BD',
   COMPLETE: '#2E7D32',
   CANCEL: '#BF360C',
+};
+
+const ACTION_LABELS_PL: Record<string, string> = {
+  LOGIN: 'Logowanie',
+  CREATE: 'Utworzenie',
+  UPDATE: 'Aktualizacja',
+  DELETE: 'Usunięcie',
+  STATUS_CHANGE: 'Zmiana statusu',
+  CONFIRM: 'Zatwierdzenie',
+  APPROVE: 'Akceptacja',
+  GENERATE_TASKS: 'Generowanie zadań',
+  START: 'Rozpoczęcie',
+  COMPLETE: 'Zakończenie',
+  CANCEL: 'Anulowanie',
 };
 
 interface AuditEntry {
@@ -36,14 +51,14 @@ const columns: GridColDef[] = [
     width: 170,
     valueFormatter: (value: string) => (value ? new Date(value).toLocaleString('pl-PL') : '—'),
   },
-  { field: 'user_id', headerName: 'User ID', width: 90 },
+  { field: 'user_id', headerName: 'ID użytkownika', width: 120 },
   {
     field: 'action',
     headerName: 'Akcja',
     width: 150,
     renderCell: (params) => (
       <Chip
-        label={params.value}
+        label={ACTION_LABELS_PL[params.value as string] ?? params.value}
         size="small"
         sx={{
           bgcolor: ACTION_COLORS[params.value as string] ?? '#757575',
@@ -105,14 +120,14 @@ const AuditLogPage = () => {
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
-        Dziennik zdarzeń (Audit Log)
+        Dziennik zdarzeń
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Łącznie: {total}
       </Typography>
 
       <TextField
-        placeholder="Szukaj..."
+        placeholder="Szukaj po typie obiektu..."
         size="small"
         value={search}
         onChange={(e) => handleSearchChange(e.target.value)}
@@ -142,6 +157,7 @@ const AuditLogPage = () => {
             sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
           }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />

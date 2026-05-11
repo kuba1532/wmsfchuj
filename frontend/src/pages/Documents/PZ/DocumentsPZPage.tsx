@@ -26,6 +26,7 @@ import {
 } from '@/constants/documentStatuses';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 import { documentPZSchema, type DocumentPZFormData } from '@/utils/validators';
 import FormModal from '@/components/Modal/FormModal';
 import ScanButton from '@/components/Scanner/ScanButton';
@@ -34,6 +35,10 @@ import { useExternalScanner } from '@/hooks/useExternalScanner';
 import { generateDocumentPDF } from '@/utils/pdfGenerator';
 import { useDocuments, type DocumentItem } from '@/hooks/useDocuments';
 import apiClient from '@/api/client';
+import {
+  DocumentRelatedTasksCell,
+  DocumentRelatedTasksDetailSection,
+} from '@/components/DocumentRelatedTasks/DocumentRelatedTasks';
 
 interface ProductOption {
   id: number;
@@ -47,6 +52,12 @@ interface SupplierOption {
   name: string;
 }
 
+interface LocationOption {
+  id: number;
+  code: string;
+  type: string;
+}
+
 const DocumentsPZPage = () => {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -55,11 +66,12 @@ const DocumentsPZPage = () => {
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [targetLocations, setTargetLocations] = useState<LocationOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { canCreate } = usePermissions();
   const { showError } = useNotification();
 
-  const { documents, total, isLoading, createPZ, pzStart, pzComplete, generateTasks } = useDocuments({
+  const { documents, total, isLoading, createPZ, pzComplete } = useDocuments({
     docType: 'PZ',
     search: debouncedSearch,
   });
@@ -72,7 +84,7 @@ const DocumentsPZPage = () => {
     formState: { errors },
   } = useForm<DocumentPZFormData>({
     resolver: zodResolver(documentPZSchema),
-    defaultValues: { supplierId: 0, items: [{ productId: 0, quantity: 1 }] },
+    defaultValues: { supplierId: 0, targetLocationId: 0, items: [{ productId: 0, quantity: 1 }] },
   });
 
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'items' });
@@ -84,6 +96,13 @@ const DocumentsPZPage = () => {
       .get('/suppliers?page=1&page_size=100')
       .then((res) => setSuppliers(res.data.items ?? []))
       .catch(() => showError('Nie udało się pobrać dostawców.'));
+    apiClient
+      .get('/locations?page=1&page_size=100')
+      .then((res) => {
+        const raw = (res.data.items ?? []) as LocationOption[];
+        setTargetLocations(raw.filter((l) => l.type !== 'BUFFER' && l.type !== 'buffer'));
+      })
+      .catch(() => showError('Nie udało się pobrać lokalizacji.'));
   }, [createOpen, showError]);
 
   useEffect(() => {
@@ -110,28 +129,20 @@ const DocumentsPZPage = () => {
     try {
       await createPZ({
         supplier_id: data.supplierId,
-        items: data.items.map((i) => ({ product_id: i.productId, quantity: i.quantity })),
+        to_location_id: data.targetLocationId,
+        items: data.items.map((i) => ({
+          product_id: i.productId,
+          quantity: i.quantity,
+        })),
       });
       setCreateOpen(false);
-      reset({ supplierId: 0, items: [{ productId: 0, quantity: 1 }] });
+      reset({ supplierId: 0, targetLocationId: 0, items: [{ productId: 0, quantity: 1 }] });
     } catch (error: unknown) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
         ?.detail;
       showError(detail ?? 'Nie udało się utworzyć dokumentu.');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handlePzStart = async (id: number) => {
-    try {
-      await pzStart(id);
-      setDetailOpen(false);
-      setSelectedDoc(null);
-    } catch (error: unknown) {
-      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail;
-      showError(detail ?? 'Nie udało się rozpocząć przyjęcia.');
     }
   };
 
@@ -147,18 +158,6 @@ const DocumentsPZPage = () => {
     }
   };
 
-  const handleGenerateTasks = async (id: number) => {
-    try {
-      await generateTasks(id);
-      setDetailOpen(false);
-      setSelectedDoc(null);
-    } catch (error: unknown) {
-      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail;
-      showError(detail ?? 'Nie udało się wygenerować zadań.');
-    }
-  };
-
   const columns: GridColDef[] = [
     { field: 'number', headerName: 'Numer dokumentu', width: 170 },
     {
@@ -171,7 +170,7 @@ const DocumentsPZPage = () => {
     { field: 'supplier', headerName: 'Dostawca', flex: 1, minWidth: 160 },
     {
       field: 'status',
-      headerName: 'Status',
+      headerName: 'Stan dokumentu',
       width: 150,
       renderCell: (params) => (
         <Chip
@@ -186,23 +185,52 @@ const DocumentsPZPage = () => {
       ),
     },
     {
-      field: 'actions',
-      headerName: 'Akcje',
-      width: 80,
+      field: 'related_tasks',
+      headerName: 'Powiązane zadania',
+      description: 'Kolejność 1., 2., … oraz #id — jak w module Zadania.',
+      minWidth: 280,
+      flex: 0.5,
       sortable: false,
       filterable: false,
       renderCell: (params) => (
-        <Tooltip title="Podgląd">
-          <IconButton
-            size="small"
-            onClick={() => {
-              setSelectedDoc(params.row);
-              setDetailOpen(true);
-            }}
-          >
-            <Visibility fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <DocumentRelatedTasksCell tasks={(params.row as DocumentItem).related_tasks} />
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: 'Akcje',
+      width: 260,
+      sortable: false,
+      filterable: false,
+      renderCell: (params) => (
+        <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+          {params.row.status === DocumentStatus.DRAFT && (
+            <Tooltip title="Zarejestruj przyjęcie na wskazanej lokalizacji">
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePzComplete(params.row.id);
+                }}
+              >
+                Zarejestruj
+              </Button>
+            </Tooltip>
+          )}
+          <Tooltip title="Podgląd">
+            <IconButton
+              size="small"
+              onClick={() => {
+                setSelectedDoc(params.row);
+                setDetailOpen(true);
+              }}
+            >
+              <Visibility fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       ),
     },
   ];
@@ -262,6 +290,7 @@ const DocumentsPZPage = () => {
             sorting: { sortModel: [{ field: 'created_at', sort: 'desc' }] },
           }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />
@@ -271,7 +300,7 @@ const DocumentsPZPage = () => {
         open={createOpen}
         onClose={() => {
           setCreateOpen(false);
-          reset({ supplierId: 0, items: [{ productId: 0, quantity: 1 }] });
+          reset({ supplierId: 0, targetLocationId: 0, items: [{ productId: 0, quantity: 1 }] });
         }}
         onSubmit={handleSubmit(handleCreate)}
         title="Nowe przyjęcie zewnętrzne (PZ)"
@@ -288,6 +317,7 @@ const DocumentsPZPage = () => {
               label="Dostawca (z katalogu)"
               fullWidth
               size="small"
+              InputLabelProps={{ shrink: true }}
               error={!!errors.supplierId}
               helperText={errors.supplierId?.message ?? 'Tylko produkty przypisane do dostawcy'}
               value={field.value || ''}
@@ -307,19 +337,49 @@ const DocumentsPZPage = () => {
             </TextField>
           )}
         />
+        <Controller
+          name="targetLocationId"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              select
+              label="Lokalizacja przyjęcia"
+              fullWidth
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              error={!!errors.targetLocationId}
+              helperText={errors.targetLocationId?.message ?? 'Stan zostanie zwiększony bezpośrednio tutaj'}
+              value={field.value || ''}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                field.onChange(Number.isFinite(v) ? v : 0);
+              }}
+              slotProps={{ select: { native: true } }}
+              sx={{ mt: 2 }}
+            >
+              <option value={0}>— wybierz lokalizację —</option>
+              {targetLocations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.code} ({loc.type})
+                </option>
+              ))}
+            </TextField>
+          )}
+        />
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
           Pozycje dokumentu
         </Typography>
 
         {fields.map((field, index) => (
-          <Box key={field.id} sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 1 }}>
+          <Box key={field.id} sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-start', mb: 1 }}>
             <TextField
               select
               label="Produkt"
               size="small"
-              fullWidth
+              sx={{ flex: '1 1 200px', minWidth: 180 }}
               defaultValue={field.productId || ''}
+              InputLabelProps={{ shrink: true }}
               error={!!errors.items?.[index]?.productId}
               helperText={errors.items?.[index]?.productId?.message}
               {...register(`items.${index}.productId`, { valueAsNumber: true })}
@@ -336,7 +396,8 @@ const DocumentsPZPage = () => {
               label="Ilość"
               type="number"
               size="small"
-              sx={{ minWidth: 120 }}
+              sx={{ minWidth: 100 }}
+              InputLabelProps={{ shrink: true }}
               error={!!errors.items?.[index]?.quantity}
               helperText={errors.items?.[index]?.quantity?.message}
               {...register(`items.${index}.quantity`, { valueAsNumber: true })}
@@ -407,7 +468,7 @@ const DocumentsPZPage = () => {
               ))}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Status
+                  Stan dokumentu
                 </Typography>
                 <Chip
                   label={DOCUMENT_STATUS_LABELS[selectedDoc.status]}
@@ -421,6 +482,8 @@ const DocumentsPZPage = () => {
               </Box>
 
               <Divider />
+              <DocumentRelatedTasksDetailSection tasks={selectedDoc.related_tasks} />
+              <Divider />
               <Typography variant="subtitle2" fontWeight={600}>
                 Pozycje dokumentu ({selectedDoc.items?.length ?? 0})
               </Typography>
@@ -432,7 +495,7 @@ const DocumentsPZPage = () => {
                 <Box
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '120px 1fr 100px',
+                    gridTemplateColumns: '100px 1fr 90px',
                     gap: 1,
                     px: 1.5,
                     py: 1,
@@ -452,7 +515,7 @@ const DocumentsPZPage = () => {
                   key={it.id}
                   sx={{
                     display: 'grid',
-                    gridTemplateColumns: '120px 1fr 100px',
+                    gridTemplateColumns: '100px 1fr 90px',
                     gap: 1,
                     px: 1.5,
                     py: 0.5,
@@ -470,32 +533,14 @@ const DocumentsPZPage = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: 2, flexWrap: 'wrap', gap: 1 }}>
           {selectedDoc?.status === DocumentStatus.DRAFT && (
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => handlePzStart(selectedDoc.id)}
-            >
-              Rozpocznij przyjęcie
-            </Button>
-          )}
-          {selectedDoc?.status === DocumentStatus.IN_PROGRESS && (
             <Button
               variant="contained"
               color="success"
               onClick={() => handlePzComplete(selectedDoc.id)}
             >
-              Zakończ przyjęcie
-            </Button>
-          )}
-          {selectedDoc?.status === DocumentStatus.CONFIRMED && (
-            <Button
-              variant="contained"
-              color="success"
-              onClick={() => handleGenerateTasks(selectedDoc.id)}
-            >
-              Generuj zadania (dokument archiwalny)
+              Zarejestruj przyjęcie
             </Button>
           )}
           <Button

@@ -1,7 +1,8 @@
 import { createTheme } from '@mui/material/styles';
+import { plPL } from '@mui/material/locale';
 import type {} from '@mui/x-data-grid/themeAugmentation';
 
-const theme = createTheme({
+const theme = createTheme(plPL, {
   palette: {
     primary: {
       main: '#1565C0',
@@ -46,7 +47,7 @@ const theme = createTheme({
     divider: '#E2E8F0',
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Arial", sans-serif',
+    fontFamily: '"Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif',
     h4: { fontWeight: 700, fontSize: '1.75rem' },
     h5: { fontWeight: 700, fontSize: '1.4rem' },
     h6: { fontWeight: 600, fontSize: '1.1rem' },

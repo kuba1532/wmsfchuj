@@ -83,10 +83,20 @@ def create_user(
     db.flush()
     raw_token = issue_password_setup_token(db, user)
     setup_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/set-password?token={raw_token}"
-    send_account_setup_email(to_email=user.email, login_code=user.login_code, setup_url=setup_url)
+    setup_mail_sent, setup_mail_error = send_account_setup_email(
+        to_email=user.email,
+        login_code=user.login_code,
+        setup_url=setup_url,
+    )
     log_action(
         db, "CREATE", "User", user.id,
-        details={"email": data.email, "role": data.role, "login_code": login_code, "setup_mail_sent": True},
+        details={
+            "email": data.email,
+            "role": data.role,
+            "login_code": login_code,
+            "setup_mail_sent": setup_mail_sent,
+            "setup_mail_error": setup_mail_error,
+        },
         user_id=current_user.id,
     )
     db.commit()

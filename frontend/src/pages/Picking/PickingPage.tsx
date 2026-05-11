@@ -22,7 +22,7 @@ const PickingPage = () => {
   const [activeStep, setActiveStep] = useState(0);
   const { showError } = useNotification();
 
-  const { tasks, isLoading, startTask, completeTask } = useTasks({});
+  const { tasks, isLoading, startTask, completeTask } = useTasks({ omitTerminal: true });
 
   const pickingTasks = tasks.filter(
     (t) => t.type === 'PICKING' && t.status !== 'CANCELLED',
@@ -33,8 +33,9 @@ const PickingPage = () => {
       await startTask(id);
       setActiveTaskId(id);
       setActiveStep(0);
-    } catch {
-      showError('Nie udało się rozpocząć zadania.');
+    } catch (error) {
+      const apiError = (error as { response?: { data?: unknown } })?.response?.data;
+      showError(apiError ?? 'Nie udało się rozpocząć zadania.');
     }
   };
 
@@ -46,8 +47,9 @@ const PickingPage = () => {
         await completeTask(activeTaskId!);
         setActiveTaskId(null);
         setActiveStep(0);
-      } catch {
-        showError('Nie udało się zakończyć zadania.');
+      } catch (error) {
+        const apiError = (error as { response?: { data?: unknown } })?.response?.data;
+        showError(apiError ?? 'Nie udało się zakończyć zadania.');
       }
     }
   };
@@ -65,7 +67,7 @@ const PickingPage = () => {
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
-        Kompletacja (Picking)
+        Kompletacja
       </Typography>
 
       {pickingTasks.length === 0 && !activeTaskId && (
@@ -76,7 +78,7 @@ const PickingPage = () => {
         <Card sx={{ mb: 3, borderRadius: 2, border: '2px solid #D32F2F' }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Aktywna kompletacja
+              Aktywna kompletacja #{activeTask.id}
             </Typography>
             <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
               {STEPS.map((label) => (
@@ -122,7 +124,10 @@ const PickingPage = () => {
               sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
             >
               <Box>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5, flexWrap: 'wrap' }}>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                    #{task.id}
+                  </Typography>
                   <Typography variant="body1" fontWeight={600}>
                     {task.product?.name ?? `Produkt #${task.product_id}`}
                   </Typography>

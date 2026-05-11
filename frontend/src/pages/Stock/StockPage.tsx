@@ -16,13 +16,14 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
-import { Search, SwapHoriz, Close } from '@mui/icons-material';
+import { Search, SwapHoriz, Close, Refresh } from '@mui/icons-material';
 import { StockStatus, STOCK_STATUS_LABELS, STOCK_STATUS_COLORS } from '@/constants/stockStatuses';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useNotification } from '@/context/NotificationContext';
 import { useStock, type StockItem } from '@/hooks/useStock';
 import ScanButton from '@/components/Scanner/ScanButton';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 
 const StockPage = () => {
   const [search, setSearch] = useState('');
@@ -34,7 +35,12 @@ const StockPage = () => {
   const { canChangeStockStatus } = usePermissions();
   const { showError } = useNotification();
 
-  const { stock, total, isLoading, changeStatus } = useStock({ search: debouncedSearch });
+  const isSearching = search !== debouncedSearch;
+  const { stock, total, isLoading, changeStatus, refresh } = useStock({
+    search: debouncedSearch,
+    // Odświeżaj po zmianie systemowej, ale nie w trakcie wpisywania/edycji.
+    autoRefreshEnabled: !statusDialogOpen && !isSearching,
+  });
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -110,7 +116,7 @@ const StockPage = () => {
     { field: 'quantity', headerName: 'Ilość', width: 100, type: 'number' },
     {
       field: 'status',
-      headerName: 'Status',
+      headerName: 'Stan zapasu',
       width: 160,
       renderCell: (params) => (
         <Chip
@@ -185,6 +191,11 @@ const StockPage = () => {
           }}
         />
         <ScanButton onScan={handleScan} title="Skanuj SKU lub lokalizację" />
+        <Tooltip title="Odśwież listę">
+          <IconButton onClick={refresh} disabled={isLoading}>
+            <Refresh />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {isLoading ? (
@@ -198,6 +209,7 @@ const StockPage = () => {
           pageSizeOptions={[10, 25, 50]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />

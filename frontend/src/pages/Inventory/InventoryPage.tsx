@@ -17,6 +17,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 import {
   Add,
   Search,
@@ -242,7 +243,7 @@ const InventoryPage = () => {
     },
     {
       field: 'status',
-      headerName: 'Status',
+      headerName: 'Stan dokumentu',
       width: 150,
       renderCell: (params) => (
         <Chip
@@ -321,6 +322,7 @@ const InventoryPage = () => {
           pageSizeOptions={[10, 25]}
           initialState={{ pagination: { paginationModel: { pageSize: 10 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />
@@ -483,7 +485,7 @@ const InventoryPage = () => {
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">
-                    Status
+                    Stan dokumentu
                   </Typography>
                   <Chip
                     label={DOCUMENT_STATUS_LABELS[selectedDoc.status]}

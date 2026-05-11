@@ -15,7 +15,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { PersonAdd, Search, Lock, LockOpen, Edit } from '@mui/icons-material';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Role } from '@/constants/roles';
+import { Role, ROLE_LABELS } from '@/constants/roles';
 import { useNotification } from '@/context/NotificationContext';
 import {
   userCreateSchema,
@@ -28,19 +28,13 @@ import FormSelect from '@/components/Form/FormSelect';
 import FormModal from '@/components/Modal/FormModal';
 import PageHeader from '@/components/Table/PageHeader';
 import { useUsers, type UserItem } from '@/hooks/useUsers';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 
 const ROLE_COLORS: Record<Role, string> = {
   [Role.ADMIN]: '#D32F2F',
   [Role.MANAGER]: '#1565C0',
   [Role.FOREMAN]: '#FF8F00',
   [Role.WORKER]: '#2E7D32',
-};
-
-const ROLE_LABELS: Record<Role, string> = {
-  [Role.ADMIN]: 'Administrator',
-  [Role.MANAGER]: 'Kierownik',
-  [Role.FOREMAN]: 'Brygadzista',
-  [Role.WORKER]: 'Magazynier',
 };
 
 const ROLE_OPTIONS = Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label }));
@@ -140,10 +134,10 @@ const UsersPage = () => {
   };
 
   const columns: GridColDef[] = [
-    { field: 'login_code', headerName: 'Login', width: 90 },
+    { field: 'login_code', headerName: 'Kod logowania', width: 110 },
     { field: 'first_name', headerName: 'Imię', width: 120 },
     { field: 'last_name', headerName: 'Nazwisko', width: 140 },
-    { field: 'email', headerName: 'Email', flex: 1, minWidth: 180 },
+    { field: 'email', headerName: 'E-mail', flex: 1, minWidth: 180 },
     {
       field: 'role',
       headerName: 'Rola',
@@ -162,7 +156,7 @@ const UsersPage = () => {
     },
     {
       field: 'is_active',
-      headerName: 'Status',
+      headerName: 'Konto',
       width: 130,
       renderCell: (params) => (
         <Chip
@@ -247,7 +241,7 @@ const UsersPage = () => {
     <>
       {selectedUser && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          Email (nie można zmienić): <strong>{selectedUser.email}</strong>
+          E-mail (nie można zmienić): <strong>{selectedUser.email}</strong>
         </Typography>
       )}
       <Box sx={{ display: 'flex', gap: 2 }}>
@@ -317,6 +311,7 @@ const UsersPage = () => {
           pageSizeOptions={[10, 25]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />
@@ -335,7 +330,8 @@ const UsersPage = () => {
       >
         {renderCreateForm()}
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          Login (5-cyfrowy kod) zostanie wygenerowany automatycznie. Użytkownik ustawi hasło z linku wysłanego e-mailem.
+          Kod logowania (5 cyfr) zostanie wygenerowany automatycznie. Użytkownik ustawi hasło z linku
+          wysłanego e-mailem.
         </Typography>
       </FormModal>
 

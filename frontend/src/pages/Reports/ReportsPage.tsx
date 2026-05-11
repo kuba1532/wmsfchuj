@@ -13,6 +13,12 @@ import { BarChart, Download, Inventory2, SwapHoriz, Assignment } from '@mui/icon
 import apiClient from '@/api/client';
 import { useNotification } from '@/context/NotificationContext';
 import { utils, writeFile } from 'xlsx';
+import { StockStatus, STOCK_STATUS_LABELS } from '@/constants/stockStatuses';
+import { MovementType, MOVEMENT_TYPE_LABELS } from '@/constants/movementTypes';
+import { TaskType, TASK_TYPE_LABELS } from '@/constants/taskTypes';
+import { TaskStatus, TASK_STATUS_LABELS } from '@/constants/taskStatuses';
+import { DocumentType, DOCUMENT_TYPE_LABELS } from '@/constants/documentTypes';
+import { DocumentStatus, DOCUMENT_STATUS_LABELS } from '@/constants/documentStatuses';
 
 interface StockRow {
   id: number;
@@ -146,7 +152,7 @@ const ReportsPage = () => {
         Produkt: row.product?.name ?? `Produkt #${row.product_id}`,
         Lokalizacja: row.location?.code ?? `#${row.location_id}`,
         Ilość: row.quantity,
-        Status: row.status,
+        Status: STOCK_STATUS_LABELS[row.status as StockStatus] ?? row.status,
       })),
     [stockRows],
   );
@@ -155,7 +161,7 @@ const ReportsPage = () => {
     () =>
       ledgerRows.map((row) => ({
         Data: formatDate(row.created_at),
-        Typ: row.movement_type,
+        Typ: MOVEMENT_TYPE_LABELS[row.movement_type as MovementType] ?? row.movement_type,
         Dokument: row.document_number ?? '—',
         Produkt_ID: row.product_id,
         Ilość: row.quantity,
@@ -175,8 +181,8 @@ const ReportsPage = () => {
         current.Liczba_zadań += 1;
       } else {
         grouped.set(key, {
-          Typ: row.type,
-          Status: row.status,
+          Typ: TASK_TYPE_LABELS[row.type as TaskType] ?? row.type,
+          Status: TASK_STATUS_LABELS[row.status as TaskStatus] ?? row.status,
           Liczba_zadań: 1,
         });
       }
@@ -195,8 +201,8 @@ const ReportsPage = () => {
         current.Liczba_dokumentów += 1;
       } else {
         grouped.set(key, {
-          Typ: row.type,
-          Status: row.status,
+          Typ: DOCUMENT_TYPE_LABELS[row.type as DocumentType] ?? row.type,
+          Status: DOCUMENT_STATUS_LABELS[row.status as DocumentStatus] ?? row.status,
           Liczba_dokumentów: 1,
         });
       }

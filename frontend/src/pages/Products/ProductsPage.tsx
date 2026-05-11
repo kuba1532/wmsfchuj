@@ -27,6 +27,7 @@ import ScanButton from '@/components/Scanner/ScanButton';
 import { useExternalScanner } from '@/hooks/useExternalScanner';
 import FormModal from '@/components/Modal/FormModal';
 import PageHeader from '@/components/Table/PageHeader';
+import { dataGridLocaleText } from '@/constants/dataGridLocale';
 import { useProducts, type ProductItem } from '@/hooks/useProducts';
 
 const ProductsPage = () => {
@@ -126,7 +127,7 @@ const ProductsPage = () => {
     { field: 'unit', headerName: 'Jednostka', width: 100 },
     {
       field: 'is_active',
-      headerName: 'Status',
+      headerName: 'Aktywność',
       width: 110,
       renderCell: (params) => (
         <Chip
@@ -214,6 +215,7 @@ const ProductsPage = () => {
           pageSizeOptions={[10, 25, 50]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           disableRowSelectionOnClick
+          localeText={dataGridLocaleText}
           autoHeight
           sx={{ borderRadius: 2 }}
         />

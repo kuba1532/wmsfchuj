@@ -141,7 +141,15 @@ export interface DocumentItemResponse {
   id: number;
   product_id: number;
   quantity: number;
+  putaway_to_location_id?: number | null;
+  putaway_to_location_code?: string | null;
   product: ProductResponse | null;
+}
+
+export interface DocumentLinkedTaskBrief {
+  id: number;
+  type: string;
+  status: string;
 }
 
 export interface DocumentResponse {
@@ -153,10 +161,13 @@ export interface DocumentResponse {
   supplier: string | null;
   from_location_id: number | null;
   to_location_id: number | null;
+  from_location_code?: string | null;
+  to_location_code?: string | null;
   recipient: string | null;
   created_by_id: number;
   items: DocumentItemResponse[];
   created_at: string;
+  related_tasks?: DocumentLinkedTaskBrief[];
 }
 
 export interface DocumentItemCreate {
@@ -166,6 +177,7 @@ export interface DocumentItemCreate {
 
 export interface DocumentCreatePZ {
   supplier_id: number;
+  to_location_id: number;
   items: DocumentItemCreate[];
 }
 
@@ -176,8 +188,18 @@ export interface DocumentCreateMM {
 }
 
 export interface DocumentCreateRW {
-  recipient: string;
+  from_location_id: number;
+  recipient_id?: number;
+  /** Tekstowe (legacy) — używane tylko gdy brak recipient_id */
+  recipient?: string;
   items: DocumentItemCreate[];
+}
+
+export interface RecipientResponse {
+  id: number;
+  code: string;
+  name: string;
+  is_active: boolean;
 }
 
 // -- Task --
