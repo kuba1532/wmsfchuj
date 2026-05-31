@@ -302,16 +302,17 @@ class _MmTabState extends State<MmTab> {
                 trailing: d.status == 'DRAFT'
                     ? TextButton(
                         onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
                           try {
                             await widget.api.confirmDocument(d.id);
                             await _loadDocs();
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               SnackBar(content: Text('MM ${d.number} — zatwierdzono (zadania jak na webie)')),
                             );
                           } on ApiException catch (e) {
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(content: Text(e.message)),
                               );
                             }

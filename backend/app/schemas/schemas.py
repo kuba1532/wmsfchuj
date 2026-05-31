@@ -25,6 +25,8 @@ class UserResponse(BaseModel):
     must_set_password: bool
     created_at: datetime
     version: int
+    # N-04: informacja dla klienta, że hasło wygasło (wyliczana w /auth/me).
+    password_expired: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -56,6 +58,26 @@ class ChangePasswordRequest(BaseModel):
 
 class SetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=32, max_length=1024)
+    new_password: str = Field(..., min_length=8)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Haslo musi zawierac co najmniej jedna litere.")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Haslo musi zawierac co najmniej jedna cyfre.")
+        return v
+
+
+class ChangeExpiredPasswordRequest(BaseModel):
+    """Rotacja wygasłego hasła (N-04) — bez JWT, bo logowanie jest zablokowane.
+
+    Wymaga znajomości obecnego (wygasłego) hasła, więc jest bezpieczna.
+    """
+
+    login: str = Field(..., min_length=5, max_length=5, pattern=r"^\d{5}$")
+    current_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8)
 
     @field_validator("new_password")

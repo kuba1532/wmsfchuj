@@ -64,7 +64,8 @@ class _RwTabState extends State<RwTab> {
       setState(() {
         _locations = locs;
         _recipients = recs;
-        if (_fromLocationId != null && !locs.any((l) => l.id == _fromLocationId)) {
+        if (_fromLocationId != null &&
+            !locs.any((l) => l.id == _fromLocationId)) {
           _fromLocationId = null;
         }
         if (_recipientId != null && !recs.any((r) => r.id == _recipientId)) {
@@ -109,7 +110,11 @@ class _RwTabState extends State<RwTab> {
       if (qty == null || !mounted) return;
       setState(() => _lines.add(PzLineDraft(product: product, quantity: qty)));
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     }
   }
 
@@ -125,8 +130,14 @@ class _RwTabState extends State<RwTab> {
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Anuluj'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -137,7 +148,11 @@ class _RwTabState extends State<RwTab> {
   Future<void> _submit() async {
     if (_fromLocationId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Wybierz lokalizację pobrania (skąd zdejmujemy towar).')),
+        const SnackBar(
+          content: Text(
+            'Wybierz lokalizację pobrania (skąd zdejmujemy towar).',
+          ),
+        ),
       );
       return;
     }
@@ -148,14 +163,16 @@ class _RwTabState extends State<RwTab> {
       return;
     }
     if (_lines.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dodaj pozycje ze skanera')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Dodaj pozycje ze skanera')));
       return;
     }
     setState(() => _saving = true);
     try {
-      final items = _lines.map((l) => {'product_id': l.product.id, 'quantity': l.quantity}).toList();
+      final items = _lines
+          .map((l) => {'product_id': l.product.id, 'quantity': l.quantity})
+          .toList();
       final doc = await widget.api.createRw(
         fromLocationId: _fromLocationId!,
         recipientId: _recipientId!,
@@ -183,7 +200,11 @@ class _RwTabState extends State<RwTab> {
         ),
       );
     } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -198,7 +219,10 @@ class _RwTabState extends State<RwTab> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Wydanie RW (wysyłka)', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            'Wydanie RW (wysyłka)',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 8),
           const Text(
             'Kroki: 1) Lokalizacja pobrania  2) Odbiorca  3) Pozycje  4) Utwórz RW.',
@@ -207,7 +231,9 @@ class _RwTabState extends State<RwTab> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Od razu zatwierdź'),
-            subtitle: const Text('Ten sam krok co „Zatwierdź” na panelu webowym (RW → zadania).'),
+            subtitle: const Text(
+              'Ten sam krok co „Zatwierdź” na panelu webowym (RW → zadania).',
+            ),
             value: _autoToTasks,
             onChanged: _saving ? null : (v) => setState(() => _autoToTasks = v),
           ),
@@ -232,12 +258,15 @@ class _RwTabState extends State<RwTab> {
                 helperText: 'Musi mieć stan przy zatwierdzaniu RW',
               ),
               isExpanded: true,
-              value: _fromLocationId,
+              initialValue: _fromLocationId,
               items: _locations
                   .map(
                     (l) => DropdownMenuItem(
                       value: l.id,
-                      child: Text('${l.code} (${l.type})', overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        '${l.code} (${l.type})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                   .toList(),
@@ -252,12 +281,15 @@ class _RwTabState extends State<RwTab> {
                 border: OutlineInputBorder(),
               ),
               isExpanded: true,
-              value: _recipientId,
+              initialValue: _recipientId,
               items: _recipients
                   .map(
                     (r) => DropdownMenuItem(
                       value: r.id,
-                      child: Text('${r.code} — ${r.name}', overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        '${r.code} — ${r.name}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                   .toList(),
@@ -270,7 +302,10 @@ class _RwTabState extends State<RwTab> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Brak odbiorców w API (migracja 0008 + seed / uprawnienie słowników).',
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ),
           ],
@@ -292,7 +327,9 @@ class _RwTabState extends State<RwTab> {
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: (_saving || _dictLoading || _dictError != null) ? null : _submit,
+            onPressed: (_saving || _dictLoading || _dictError != null)
+                ? null
+                : _submit,
             child: _saving
                 ? const SizedBox(
                     width: 22,
@@ -309,7 +346,10 @@ class _RwTabState extends State<RwTab> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_listError != null)
-            Text(_listError!, style: TextStyle(color: Theme.of(context).colorScheme.error))
+            Text(
+              _listError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            )
           else if ((_recent ?? []).isEmpty)
             const Text('Brak dokumentów RW')
           else
@@ -328,13 +368,17 @@ class _RwTabState extends State<RwTab> {
                             await _loadDocs();
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('RW ${d.number} — zatwierdzono (zadania jak na webie)')),
+                              SnackBar(
+                                content: Text(
+                                  'RW ${d.number} — zatwierdzono (zadania jak na webie)',
+                                ),
+                              ),
                             );
                           } on ApiException catch (e) {
                             if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(e.message)),
-                            );
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(e.message)));
                           }
                         },
                         child: const Text('Zatwierdź'),

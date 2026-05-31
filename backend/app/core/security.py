@@ -98,6 +98,37 @@ def validate_password_policy(password: str) -> tuple[bool, str]:
     return True, ""
 
 
+def ensure_aware(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalizuje datetime do UTC-aware.
+
+    Kolumny DateTime (MySQL/SQLite) zwracają wartości *naive*. Porównanie ich z
+    `datetime.now(timezone.utc)` (aware) rzuca TypeError. Traktujemy naive jako UTC.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def is_password_expired(password_set_at: Optional[datetime], max_age_days: int) -> bool:
+    """Czy hasło wygasło wg polityki N-04 (zmiana co `max_age_days` dni).
+
+    - `max_age_days <= 0` → wymuszanie wyłączone.
+    - `password_set_at is None` → konto bez znanej daty ustawienia hasła (np. seed
+      sprzed wdrożenia polityki) — świadomie NIE blokujemy, aby nie odciąć
+      istniejących użytkowników. Data zostanie ustawiona przy najbliższej zmianie.
+    """
+    if not max_age_days or max_age_days <= 0:
+        return False
+    if password_set_at is None:
+        return False
+    reference = password_set_at
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - reference) > timedelta(days=max_age_days)
+
+
 # ─────────────────────────────
 # LOGIN CODE GENERATOR
 # ─────────────────────────────

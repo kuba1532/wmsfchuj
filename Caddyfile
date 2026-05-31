@@ -1,0 +1,8 @@
+# Zamień {$PUBLIC_DOMAIN} na swoją domenę przez zmienną w .env.prod,
+# np. PUBLIC_DOMAIN=wms.twojadomena.pl
+# Caddy automatycznie wystawi i odnowi certyfikat HTTPS (Let's Encrypt).
+
+{$PUBLIC_DOMAIN} {
+    encode gzip
+    reverse_proxy frontend:80
+}

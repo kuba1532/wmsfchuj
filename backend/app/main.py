@@ -350,6 +350,26 @@ if _cors_regex_parts:
     )
 app.add_middleware(CORSMiddleware, **_cors_kw)
 
+# ── Bezpieczeństwo: nagłówki ochronne, limit żądań, kontrola hosta ──
+# Uwaga: kolejność add_middleware jest odwrotna do wykonania (ostatni dodany
+# wykonuje się jako pierwszy), dlatego rate-limit/host dodajemy po nagłówkach.
+from app.middleware.security import SecurityHeadersMiddleware, RateLimitMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+if settings.SECURITY_HEADERS_ENABLED:
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        hsts_enabled=settings.HSTS_ENABLED,
+        hsts_max_age=settings.HSTS_MAX_AGE_SECONDS,
+    )
+
+if settings.RATE_LIMIT_PER_MINUTE > 0:
+    app.add_middleware(RateLimitMiddleware, limit_per_minute=settings.RATE_LIMIT_PER_MINUTE)
+
+_trusted = settings.trusted_hosts_list
+if _trusted != ["*"]:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted)
+
 app.include_router(api_router)
 
 
@@ -366,9 +386,12 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
     traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
     sys.stderr.flush()
     logger.exception("Unhandled exception for %s %s", request.method, request.url.path)
+    # W produkcji (DEBUG=false) nie ujawniamy typu/treści wyjątku klientowi —
+    # ogranicza information disclosure wykrywany przez skanery bezpieczeństwa.
+    detail = f"{type(exc).__name__}: {exc}" if settings.DEBUG else "Wewnetrzny blad serwera."
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}"},
+        content={"detail": detail},
     )
 
 

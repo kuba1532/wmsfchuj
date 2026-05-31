@@ -1,0 +1,89 @@
+# Produkcyjny stack WMS: baza + backend + frontend (nginx) + Caddy (HTTPS).
+# Uruchomienie (na serwerze/VPS z domeną):
+#   1) cp .env.prod.example .env.prod  i uzupełnij sekrety
+#   2) ustaw swoją domenę w pliku Caddyfile
+#   3) docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Caddy automatycznie pobiera certyfikat HTTPS (Let's Encrypt) dla podanej domeny.
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-wms_db}
+    volumes:
+      - wms_mysql_prod:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD}", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [wms_net]
+    # Baza NIE jest wystawiona na świat — brak sekcji ports.
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+mysqldb://root:${DB_ROOT_PASSWORD}@db:3306/${DB_NAME:-wms_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      DEBUG: "false"
+      # Bezpieczeństwo produkcyjne:
+      HSTS_ENABLED: "true"
+      TRUSTED_HOSTS: ${PUBLIC_DOMAIN}
+      RATE_LIMIT_PER_MINUTE: "120"
+      CORS_ORIGINS: https://${PUBLIC_DOMAIN}
+      CORS_ALLOW_LOCALHOST_REGEX: "false"
+      CORS_ALLOW_LAN: "false"
+      SEED_DEMO_TASKS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [wms_net]
+    # Backend dostępny tylko przez frontend (proxy) — brak publicznych portów.
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks: [wms_net]
+    # Serwuje SPA + proxy /api → backend. Publiczny ruch idzie przez Caddy.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+    networks: [wms_net]
+
+volumes:
+  wms_mysql_prod:
+  caddy_data:
+  caddy_config:
+
+networks:
+  wms_net:
+    driver: bridge

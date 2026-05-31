@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
-from app.core.security import decode_token
+from app.core.security import decode_token, ensure_aware
 from app.db.database import get_db
 from app.models.models import User, RoleEnum
 
@@ -57,7 +57,7 @@ async def get_current_user(
             detail="Konto uzytkownika jest zablokowane.",
         )
 
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and ensure_aware(user.locked_until) > datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Sesja wygasla — konto zostalo tymczasowo zablokowane. Zaloguj sie ponownie po odblokowaniu.",

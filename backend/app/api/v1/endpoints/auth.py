@@ -12,6 +12,8 @@ from app.core.security import (
     create_refresh_token,
     decode_token,
     validate_password_policy,
+    is_password_expired,
+    ensure_aware,
 )
 from app.db.database import get_db
 from app.middleware.auth import get_current_user
@@ -21,6 +23,7 @@ from app.schemas.schemas import (
     TokenResponse,
     RefreshRequest,
     ChangePasswordRequest,
+    ChangeExpiredPasswordRequest,
     SetPasswordRequest,
     UserResponse,
 )
@@ -41,7 +44,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
 
     # Zablokowane konto — nie ujawniamy, zwracamy ten sam 401
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and ensure_aware(user.locked_until) > datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
 
     if not verify_password(data.password, user.password_hash):
@@ -65,6 +68,21 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
     user.failed_login_attempts = 0
     user.locked_until = None
+
+    # N-04: wymuszenie zmiany hasła co PASSWORD_MAX_AGE_DAYS (domyślnie 180 dni).
+    # Hasło jest poprawne, ale wygasłe — nie wydajemy tokenu; użytkownik musi je
+    # zmienić przez /auth/change-expired-password (login + stare + nowe hasło).
+    if is_password_expired(user.password_set_at, settings.PASSWORD_MAX_AGE_DAYS):
+        log_action(db, "PASSWORD_EXPIRED", "User", user.id, user_id=user.id)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "PASSWORD_EXPIRED: Twoje haslo wygaslo "
+                f"(starsze niz {settings.PASSWORD_MAX_AGE_DAYS} dni). "
+                "Ustaw nowe haslo, aby kontynuowac."
+            ),
+        )
 
     token_data = {"sub": str(user.id), "role": user.role.value, "login": user.login_code}
     access_token = create_access_token(token_data)
@@ -95,7 +113,7 @@ def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Uzytkownik nie istnieje lub jest nieaktywny.")
 
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+    if user.locked_until and ensure_aware(user.locked_until) > datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Sesja wygasla — konto zostalo zablokowane. Zaloguj sie ponownie po odblokowaniu.",
@@ -112,7 +130,11 @@ def refresh_token(data: RefreshRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
-    return UserResponse.model_validate(current_user)
+    resp = UserResponse.model_validate(current_user)
+    resp.password_expired = is_password_expired(
+        current_user.password_set_at, settings.PASSWORD_MAX_AGE_DAYS
+    )
+    return resp
 
 
 @router.post("/change-password")
@@ -128,6 +150,12 @@ def change_password(
     if not valid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
+    if verify_password(data.new_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nowe haslo musi byc inne niz obecne.",
+        )
+
     current_user.password_hash = hash_password(data.new_password)
     current_user.must_set_password = False
     current_user.password_set_at = datetime.now(timezone.utc)
@@ -135,6 +163,42 @@ def change_password(
     db.commit()
 
     return {"message": "Haslo zostalo zmienione."}
+
+
+@router.post("/change-expired-password")
+def change_expired_password(
+    data: ChangeExpiredPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """N-04: rotacja wygasłego hasła. Nie wymaga JWT (logowanie jest zablokowane),
+    ale wymaga podania obecnego hasła — więc tylko właściciel konta może je zmienić."""
+    GENERIC_ERROR = "Nieprawidlowy login lub haslo."
+
+    user = db.query(User).filter(User.login_code == data.login).first()
+    if user is None or not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
+
+    if not user.is_active or user.must_set_password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=GENERIC_ERROR)
+
+    valid, msg = validate_password_policy(data.new_password)
+    if not valid:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
+
+    if verify_password(data.new_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nowe haslo musi byc inne niz obecne.",
+        )
+
+    user.password_hash = hash_password(data.new_password)
+    user.password_set_at = datetime.now(timezone.utc)
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    log_action(db, "PASSWORD_ROTATED_EXPIRED", "User", user.id, user_id=user.id)
+    db.commit()
+
+    return {"message": "Haslo zostalo zmienione. Mozesz sie zalogowac."}
 
 
 @router.post("/set-password")

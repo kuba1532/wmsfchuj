@@ -39,6 +39,20 @@ class Settings(BaseSettings):
     SESSION_TIMEOUT_MINUTES: int = 30
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 5
+    # Polityka haseł: maksymalny wiek hasła w dniach (N-04). 0 = bez wymuszania.
+    # Konta bez znanej daty ustawienia hasła (password_set_at IS NULL) nie są blokowane.
+    PASSWORD_MAX_AGE_DAYS: int = 180
+
+    # Security headers / hardening
+    SECURITY_HEADERS_ENABLED: bool = True
+    # HSTS włącz dopiero gdy aplikacja stoi za HTTPS (produkcja / reverse proxy)
+    HSTS_ENABLED: bool = False
+    HSTS_MAX_AGE_SECONDS: int = 31536000
+    # Lista dozwolonych hostów (nagłówek Host) — CSV. "*" = bez ograniczeń (dev).
+    # W produkcji ustaw np. "wms.example.com,api.wms.example.com"
+    TRUSTED_HOSTS: str = "*"
+    # Limit liczby żądań na minutę z jednego IP (0 = wyłączone)
+    RATE_LIMIT_PER_MINUTE: int = 0
 
     # Admin (first run)
     ADMIN_EMAIL: str = "admin@wms.pl"
@@ -96,6 +110,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @property
+    def trusted_hosts_list(self) -> list[str]:
+        return [h.strip() for h in self.TRUSTED_HOSTS.split(",") if h.strip()] or ["*"]
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE,
