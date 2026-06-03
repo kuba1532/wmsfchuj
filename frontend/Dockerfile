@@ -9,6 +9,8 @@ COPY . .
 # W produkcji front woła API przez ten sam origin: /api/v1 (proxy w nginx),
 # dzięki czemu nie ma problemów z CORS i wszystko idzie przez HTTPS.
 ENV VITE_API_URL=/api/v1
+# Mikrus / słabszy VPS: ogranicz RAM Node przy buildzie Vite
+ENV NODE_OPTIONS=--max-old-space-size=768
 RUN npm run build
 
 # --- Etap 2: serwowanie statyków przez nginx + proxy do backendu ---
