@@ -93,5 +93,6 @@ scripts/generate_scenario_task_pool_xlsx.py
 scripts/generate_scenario_xlsx.py
 scripts/generate_thesis_60str.py
 scripts/build_thesis_full_docx.py
+scripts/build_thesis_docx.py
 e2e_tests/benchmark_*.json
 e2e_tests/benchmark_50_users.mjs
