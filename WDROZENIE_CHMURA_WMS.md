@@ -19,7 +19,7 @@ Pliki użyte do wdrożenia (wszystkie w repo):
 - `Caddyfile` — reverse proxy z **automatycznym HTTPS** (Let's Encrypt).
 - `.env.prod.example` — szablon sekretów.
 
-## Wariant zalecany na obronę: VPS + Docker (najprostszy, najtańszy)
+## Wariant zalecany: VPS + Docker (najprostszy, najtańszy)
 
 Dowolny tani VPS (np. **Hetzner**, **DigitalOcean**, **Mikr.us**, **OVH**) z Ubuntu 22.04. To samo zadziała na maszynie w chmurze AWS EC2 / Azure VM / GCP Compute.
 
@@ -72,7 +72,7 @@ docker compose -f docker-compose.prod.yml exec db \
 - **DEBUG=false**, **HSTS=true**, **rate-limit 120/min**, **CORS** ograniczony do domeny, **TrustedHost** ustawiony.
 - **Nagłówki bezpieczeństwa** na froncie i w API.
 
-## Warianty alternatywne (gdyby promotor pytał o „chmurę zarządzaną”)
+## Warianty alternatywne (chmura zarządzana)
 
 | Element | Usługa zarządzana (PaaS) |
 |---|---|
@@ -87,4 +87,4 @@ docker compose -f docker-compose.prod.yml exec db \
 - Zakup/konfiguracja domeny + rekord DNS A.
 - Uzupełnienie realnych sekretów w `.env.prod`.
 
-> Na obronę wystarczy pokazać działającą konfigurację lokalnie (`docker compose -f docker-compose.prod.yml ...` z `PUBLIC_DOMAIN=localhost`) lub jednorazowe wdrożenie na tanim VPS jako dowód.
+> Do demonstracji wystarczy działająca konfiguracja lokalnie (`docker compose -f docker-compose.prod.yml ...` z `PUBLIC_DOMAIN=localhost`) lub jednorazowe wdrożenie na tanim VPS.

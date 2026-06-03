@@ -58,3 +58,40 @@ Thumbs.db
 
 # Xcode — ustawienia użytkownika
 **/xcuserdata/
+
+# --- Materiały wewnętrzne (praca inż., obrona, raporty — nie publikować) ---
+PRACA_*
+OBRONA_*
+SKRYPT_*
+PRZEWODNIK_OD_ZERA_*
+MAIL_DO_PROMOTORA*
+DO_ZROBIENIA*
+PLAN_TESTOW*
+PLAN_WERYFIKACJI*
+RAPORT_*
+SCENARIUSZ_*
+SPRAWOZDANIE_*
+RYZYKA_*
+PREZENTACJA_*
+PRESENTACJA_DEMO.md
+prezentacja_demo/
+wyniki_scenariusza_auto/
+wyniki_lighthouse/
+.cache/
+.venv_docx/
+docs/uml/
+docs/DIAGRAMY_UML_WMS.md
+scripts/build_demo_pptx.py
+scripts/build_flutter_flow_pptx.py
+scripts/build_progress_docx.py
+scripts/build_progress_docx_professional.py
+scripts/enrich_prezentacja_grupa36.py
+scripts/generate_promoter_presentation_pptx.py
+scripts/rebuild_prezentacja_grupa36_polished.py
+scripts/generate_risks_monitoring_xlsx.py
+scripts/generate_scenario_task_pool_xlsx.py
+scripts/generate_scenario_xlsx.py
+scripts/generate_thesis_60str.py
+scripts/build_thesis_full_docx.py
+e2e_tests/benchmark_*.json
+e2e_tests/benchmark_50_users.mjs

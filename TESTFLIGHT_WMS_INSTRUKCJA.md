@@ -1,6 +1,6 @@
 # Wdrożenie aplikacji mobilnej WMS Worker — instrukcja krok po kroku
 
-> Dokument opisuje **3 sposoby** dostarczenia aplikacji na telefon testera/promotora:
+> Dokument opisuje **3 sposoby** dostarczenia aplikacji na telefon testera:
 > 1. **TestFlight** (oficjalny kanał Apple do testów — zalecany do prezentacji)
 > 2. **Ad-Hoc** (instalacja bezpośrednia, bez recenzji Apple — szybki backup)
 > 3. **Android APK** (najprostszy — wystarczy przesłać plik)
@@ -59,7 +59,7 @@ Tester instaluje darmową appkę **TestFlight** ze sklepu, dostaje zaproszenie (
 
 Aplikacja na telefonie testera **nie widzi** `http://127.0.0.1:8000` ani `localhost`. Masz dwie opcje:
 
-### Opcja 3A — Backend publiczny przez HTTPS (zalecane dla TestFlight/promotora)
+### Opcja 3A — Backend publiczny przez HTTPS (zalecane dla TestFlight)
 Tester może być w dowolnej sieci. Wymaga wystawienia backendu pod publiczny adres HTTPS
 (patrz `WDROZENIE_CHMURA_WMS.md` — Docker Compose + Caddy z automatycznym HTTPS).
 Adres wbudowujesz na stałe w build:
@@ -75,8 +75,8 @@ logowania pole **„Adres API"** — tester wpisuje np. `http://192.168.0.10:800
 **„Zapisz adres serwera"** i loguje się. `Info.plist` ma już `NSAllowsLocalNetworking`,
 więc http w LAN jest dozwolony. IP komputera sprawdzisz: `ipconfig getifaddr en0`.
 
-> Dla prezentacji obronnej najbezpieczniej: **3A (publiczny HTTPS)**. Backend w LAN bywa
-> blokowany przez sieci uczelniane/gościnne.
+> Dla prezentacji na zewnątrz sieci lokalnej najbezpieczniej: **3A (publiczny HTTPS)**. Backend w LAN bywa
+> blokowany przez sieci gościnne.
 
 ---
 
@@ -152,7 +152,7 @@ Po uploadzie build pojawi się w App Store Connect po ~5–30 min (status „Pro
    - **Users and Access** → dodaj testera jako użytkownika z rolą.
    - W TestFlight → grupa **App Store Connect Users** → dodaj build i osoby.
 
-   **External Testing** (promotor, do 10 000 osób, **wymaga recenzji Apple** ~1 dzień):
+   **External Testing** (osoby spoza zespołu, do 10 000 osób, **wymaga recenzji Apple** ~1 dzień):
    - Utwórz grupę zewnętrzną → dodaj e-maile testerów lub włącz **Public Link**.
    - Wypełnij „What to Test" i „Beta App Description" → **Submit for Review**.
 
@@ -163,7 +163,7 @@ Po uploadzie build pojawi się w App Store Connect po ~5–30 min (status „Pro
 
 ## 7. 📲 Jak tester POBIERA i instaluje aplikację (do opisania w pracy)
 
-Tu jest instrukcja, którą dajesz testerowi/promotorowi:
+Tu jest instrukcja, którą przekazujesz testerowi:
 
 1. **Zainstaluj „TestFlight"** z App Store (darmowa, od Apple).
 2. Otrzymasz **zaproszenie**:
@@ -176,7 +176,7 @@ Tu jest instrukcja, którą dajesz testerowi/promotorowi:
    (np. `http://192.168.0.10:8000`) → **„Zapisz adres serwera"** → zaloguj się.
 7. Aktualizacje: TestFlight powiadomi o nowym buildzie — wystarczy **„Update"**.
 
-> Build TestFlight wygasa po **90 dniach** — przed obroną zrób świeży build, żeby nie wygasł w trakcie.
+> Build TestFlight wygasa po **90 dniach** — przed ważną prezentacją zrób świeży build.
 
 ---
 

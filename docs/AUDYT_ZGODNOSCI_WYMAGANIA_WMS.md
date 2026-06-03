@@ -95,7 +95,7 @@ Dokument odpowiada na pytanie: **czy projekt jest kompletny i czy wszystko dzia�
 | N-09 | Minimalna liczba kroków (≤5) | ✅ | Mobilny flow zadania: wybór → start → potwierdzenie kodu → koniec |
 | N-10 | Spójność UI (nazwy, ikony, kolory) | ✅ | wspólne komponenty (`StatusBadge`), jednolite oznaczenia statusów |
 | N-12 | Retencja logów 12 mies. + filtrowanie | ⚠️ częściowo | Filtrowanie po dacie/użytkowniku/typie DZIAŁA. **Polityka retencji 12 mies. nie jest egzekwowana** (dane są trzymane, brak mechanizmu czyszczenia/retencji — co praktycznie spełnia minimum, ale nie ma formalnej polityki). |
-| N-14 | Dokumentacja techniczna | ✅ | README (backend/frontend/mobile), `OBRONA_PROJEKTU_WMS_SKRYPT_QA.md` (architektura), `WDROZENIE_CHMURA_WMS.md`, `docs/dokumentacja_rol/`. (Można dodać formalny opis schematu bazy.) |
+| N-14 | Dokumentacja techniczna | ✅ | README (backend/frontend/mobile), `WDROZENIE_CHMURA_WMS.md`, `docs/dokumentacja_rol/`, ten audyt. (Można dodać formalny opis schematu bazy.) |
 
 ### COULD HAVE
 
@@ -168,6 +168,6 @@ E2E_ADMIN_LOGIN=00001 E2E_ADMIN_PASSWORD=Twoje_Haslo npm run test:e2e
 
 ---
 
-## 7. Podsumowanie dla promotora
+## 7. Podsumowanie
 
-> „Wszystkie wymagania **MUST HAVE** (15 funkcjonalnych + 9 niefunkcjonalnych) są **zrealizowane i zweryfikowane**. **SHOULD HAVE** są zrealizowane — w tym **N-04 (rotacja haseł co 180 dni)**, które właśnie domknęliśmy; częściowe pozostają tylko dwa elementy infrastrukturalne (automatyczny backup i formalna retencja logów — do konfiguracji na serwerze produkcyjnym). Z **COULD HAVE** zrobiliśmy PDF; pozostałe to opcje rozwojowe. **WON'T HAVE** poprawnie poza zakresem. Aplikacja działa end‑to‑end dla wszystkich ról. Dawna luka jakościowa — brak automatycznych testów — została **domknięta**: w repozytorium jest uruchamialny pakiet **26 testów pytest** (RBAC/403, atomowość PZ→RW, polityka haseł) oraz **3 testów E2E Playwright** (logowanie/walidacja), obok 53 testów jednostkowych frontu.”
+Wszystkie wymagania **MUST HAVE** (15 funkcjonalnych + 9 niefunkcjonalnych) są zrealizowane i zweryfikowane. **SHOULD HAVE** obejmują m.in. **N-04 (rotacja haseł co 180 dni)**; częściowe pozostają dwa elementy infrastrukturalne (automatyczny backup i formalna retencja logów — do konfiguracji na serwerze produkcyjnym). Z **COULD HAVE** zrealizowano PDF; pozostałe to opcje rozwojowe. **WON'T HAVE** poprawnie poza zakresem. Aplikacja działa end‑to‑end dla wszystkich ról. W repozytorium jest uruchamialny pakiet **26 testów pytest** (RBAC/403, atomowość PZ→RW, polityka haseł) oraz **3 testów E2E Playwright** (logowanie/walidacja), obok 53 testów jednostkowych frontu.

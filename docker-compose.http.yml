@@ -1,27 +1,24 @@
-# Nakładka: wystawienie WMS po HTTP na przekierowanym porcie Mikrusa (bez Caddy, bez Cloudflare).
-# Szybki test panelu webowego na laptopie. UWAGA: bez HTTPS telefon (iOS) raczej się nie połączy.
+# Nakładka: wystawienie WMS po HTTP na przekierowanym porcie VPS (bez Caddy, bez HTTPS).
+# Szybki test panelu webowego. UWAGA: bez HTTPS telefon (iOS) raczej się nie połączy.
 #
-# Port 20308 = przekierowany publicznie jako tadek308.mikrus.xyz:20308.
-# Jeśli masz inny numer portu — podmień 20308 poniżej.
+# Ustaw w .env.prod: PUBLIC_DOMAIN=twoj-serwer.example.com oraz HTTP_PORT=20308 (lub inny).
 #
 # Użycie (na serwerze, w katalogu projektu):
 #   docker compose -f docker-compose.prod.yml -f docker-compose.http.yml --env-file .env.prod \
 #     up -d --build db backend frontend
 #
-# Następnie wejdź w przeglądarce: http://tadek308.mikrus.xyz:20308
+# Następnie: http://${PUBLIC_DOMAIN}:${HTTP_PORT}
 
 services:
   frontend:
     ports:
-      - "20308:80"
+      - "${HTTP_PORT:-20308}:80"
 
   backend:
     environment:
-      # TrustedHost porównuje host bez portu — podajemy samą nazwę.
-      TRUSTED_HOSTS: tadek308.mikrus.xyz
-      CORS_ORIGINS: http://tadek308.mikrus.xyz:20308
+      TRUSTED_HOSTS: ${PUBLIC_DOMAIN}
+      CORS_ORIGINS: http://${PUBLIC_DOMAIN}:${HTTP_PORT:-20308}
       CORS_ALLOW_LOCALHOST_REGEX: "false"
       CORS_ALLOW_LAN: "false"
-      # HSTS ma sens tylko po HTTPS — przy HTTP wyłączamy.
       HSTS_ENABLED: "false"
       DEBUG: "false"

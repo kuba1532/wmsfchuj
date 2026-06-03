@@ -196,7 +196,7 @@ Legenda: ✅ pełny / operacyjny dostęp · 👁️ tylko podgląd · ⚙️ wyk
 | Użytkownicy | ✅ | 👁️ | 🔒 | 🔒 |
 | Ustawienia systemu | ✅ | 🔒 | 🔒 | 🔒 |
 
-# Wnioski (do obrony)
+# Wnioski
 
 - **RBAC działa i jest spójny** — te same reguły egzekwowane są w interfejsie (ukrywanie menu + `RoleGuard`) i na backendzie (`require_permission` → HTTP 403). Nawet po ręcznym wpisaniu adresu zastrzeżonego użytkownik jest przekierowywany.
 - **Zasada najmniejszych uprawnień** — każda rola ma dokładnie tyle dostępu, ile wynika z jej zadań (administracja / kierowanie / nadzór operacyjny / praca wykonawcza).

@@ -73,11 +73,10 @@ cd wms_worker
 flutter test integration_test/wms_flow_golden_test.dart -d macos
 ```
 
-Z repo głównego — skrypt + PPTX:
+Z repo głównego — skrypt zrzutów ekranu:
 
 ```bash
 ./scripts/run_flutter_flow_screenshots.sh
-python3 scripts/build_flutter_flow_pptx.py
 ```
 
-Wynik: `prezentacja_demo/WMS_Flutter_przeplyw_mobilka.pptx` (układ pod obronę: okładka, agenda, cel, architektura, scenariusz, 15 slajdów z dużym ekranem, podsumowanie; notatki dla mówcy). Po zmianie kodu UI warto ponownie wygenerować PNG (`pixelRatio` zrzutu: 3).
+Wynik: katalog ze zrzutami przepływu mobilnego. Po zmianie kodu UI warto ponownie wygenerować PNG (`pixelRatio` zrzutu: 3).

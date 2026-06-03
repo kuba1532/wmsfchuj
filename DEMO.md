@@ -89,7 +89,7 @@ bash scripts/reset_demo_stack.sh
 
 **Założenie:** świeża baza po `scripts/reset_demo_stack.sh`, backend `http://127.0.0.1:8000`, konta z `DEMO.md`.
 
-### A. Panel web (np. obrona na projektorze)
+### A. Panel web (prezentacja / demo)
 
 1. Uruchom frontend: `cd frontend && npm run dev` (lub `-- --host` z LAN).
 2. Zaloguj się adminem (`00001` + hasło z `.env`).
@@ -104,7 +104,7 @@ bash scripts/reset_demo_stack.sh
 2. Logowanie **`00002`** / **`Demo1234`**.
 3. **Zadania** — filtr „Odłożenie (PZ)”; **Biorę zadanie** → **Potwierdź (skan miejsca)** — wpisz kod regału (np. STO-01).
 4. **PZ** — drugi wątek: nowe przyjęcie z **„Skanuj kod”** (SKU) jak w teście integracyjnym (`integration_test/wms_flow_golden_test.dart`).
-5. Pełna automatyczna ścieżka zrzutów do PPTX: `flutter test integration_test/wms_flow_golden_test.dart -d macos` → `python3 scripts/build_flutter_flow_pptx.py`.
+5. Pełna automatyczna ścieżka zrzutów: `flutter test integration_test/wms_flow_golden_test.dart -d macos`
 
 ---
 

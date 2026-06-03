@@ -1,8 +1,6 @@
 # Testy Google DevTools (Lighthouse) i darmowe testy bezpieczeństwa
 
-Dokument realizuje dwie wytyczne promotora:
-1. „Wyrobić testy w DevToolsach Google” → **audyt Lighthouse**.
-2. „Znaleźć jakieś darmowe internetowe testy bezpieczeństwa” → **lista skanerów online + instrukcja**.
+Instrukcja audytu wydajności (Lighthouse) oraz skanerów bezpieczeństwa online.
 
 ---
 
@@ -14,7 +12,7 @@ Dokument realizuje dwie wytyczne promotora:
 - **Best Practices** (dobre praktyki, m.in. bezpieczeństwo front-endu),
 - **SEO**.
 
-### Wariant A — ręcznie w przeglądarce (to pokazujemy na obronie)
+### Wariant A — ręcznie w przeglądarce
 1. Uruchom frontend: `cd frontend && npm run dev` (działa na `http://localhost:5173`).
 2. Otwórz stronę w **Chrome** → klawisz **F12** (DevTools).
 3. Zakładka **Lighthouse** → zaznacz wszystkie kategorie → **Analyze page load**.
@@ -59,7 +57,7 @@ Poniższe narzędzia są **darmowe** i pokażą konkretny wynik/ocenę, którą 
 | **npm audit** | `cd frontend && npm audit` | podatności w zależnościach frontu |
 | **pip-audit** | `pip install pip-audit && pip-audit -r backend/requirements.txt` | podatności w zależnościach backendu |
 
-### Zalecana, prosta ścieżka „na obronę”
+### Zalecana ścieżka weryfikacji
 1. Wdróż na VPS wg `WDROZENIE_CHMURA_WMS.md` (lub poproś o jednorazowy test).
 2. Wklej adres do **securityheaders.com** i **SSL Labs** → zrób zrzuty z ocenami.
 3. Lokalnie odpal **OWASP ZAP** *Automated Scan* i **npm audit / pip-audit** → zrzut podsumowania.
