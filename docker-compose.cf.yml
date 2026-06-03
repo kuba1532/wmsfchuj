@@ -1,0 +1,25 @@
+# Nakładka wystawiająca WMS przez Cloudflare Tunnel (darmowy adres HTTPS).
+# Idealne na Mikrusa / VPS bez publicznego portu 80/443.
+#
+# TLS kończy Cloudflare, więc kontener Caddy jest tu zbędny — po prostu go
+# NIE uruchamiamy (uruchamiamy tylko: db, backend, frontend, cloudflared).
+#
+# Użycie (na serwerze, w katalogu projektu):
+#   1) docker compose -f docker-compose.prod.yml -f docker-compose.cf.yml --env-file .env.prod \
+#        up -d --build db backend frontend cloudflared
+#   2) docker compose -f docker-compose.prod.yml -f docker-compose.cf.yml logs cloudflared \
+#        | grep -m1 trycloudflare
+#      → skopiuj adres https://xxxx.trycloudflare.com
+#   3) wpisz ten adres (BEZ https://) jako PUBLIC_DOMAIN w pliku .env.prod
+#   4) docker compose -f docker-compose.prod.yml -f docker-compose.cf.yml --env-file .env.prod \
+#        up -d db backend frontend cloudflared
+#      (backend wstanie z poprawnym CORS/TRUSTED_HOSTS; tunel zostaje ten sam adres)
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://frontend:80
+    depends_on:
+      - frontend
+    networks: [wms_net]
